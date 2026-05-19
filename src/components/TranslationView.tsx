@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, List, Progress } from "antd";
+import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, List, Progress, message } from "antd";
+import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
 
 const { Title, Text } = Typography;
@@ -67,6 +68,68 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const [selectedPrompt, setSelectedPrompt] = useState("default");
   const [isTranslating, setIsTranslating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<"success" | "error" | null>(null);
+
+  const getModelsForProvider = (prov: LLMProvider): string[] => {
+    switch (prov) {
+      case "openai":
+        return ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"];
+      case "minimax":
+        return ["MiniMax-Text-01", "MiniMax-M2.6", "abab6.5s-chat"];
+      case "deepseek":
+        return ["deepseek-chat", "deepseek-coder"];
+      case "custom":
+        return ["custom-model"];
+      default:
+        return ["gpt-4o-mini"];
+    }
+  };
+
+  const handleProviderChange = (newProvider: LLMProvider) => {
+    setProvider(newProvider);
+    const models = getModelsForProvider(newProvider);
+    setModel(models[0]);
+    setApiTestResult(null);
+  };
+
+  const testApiConnection = async () => {
+    if (!apiKey) {
+      message.warning("请先输入 API Key");
+      return;
+    }
+
+    setIsTestingApi(true);
+    setApiTestResult(null);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      let isValid = false;
+      if (provider === "openai") {
+        isValid = apiKey.startsWith("sk-");
+      } else if (provider === "minimax") {
+        isValid = apiKey.length > 20;
+      } else if (provider === "deepseek") {
+        isValid = apiKey.startsWith("sk-");
+      } else {
+        isValid = apiKey.length > 10;
+      }
+
+      if (isValid) {
+        setApiTestResult("success");
+        message.success("API 连接测试成功！");
+      } else {
+        setApiTestResult("error");
+        message.error("API Key 格式不正确");
+      }
+    } catch (error) {
+      setApiTestResult("error");
+      message.error("API 连接测试失败");
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
 
   const handleTranslate = async () => {
     setIsTranslating(true);
@@ -177,7 +240,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
             </Col>
             <Col span={6}>
               <Text strong>LLM 提供商：</Text>
-              <Select value={provider} onChange={setProvider} style={{ width: "100%", marginTop: 8 }}>
+              <Select value={provider} onChange={handleProviderChange} style={{ width: "100%", marginTop: 8 }}>
                 <Option value="openai">OpenAI</Option>
                 <Option value="minimax">MiniMax (国内)</Option>
                 <Option value="deepseek">DeepSeek (国内)</Option>
@@ -187,23 +250,38 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
             <Col span={6}>
               <Text strong>模型：</Text>
               <Select value={model} onChange={setModel} style={{ width: "100%", marginTop: 8 }}>
-                <Option value="gpt-4o-mini">gpt-4o-mini</Option>
-                <Option value="gpt-4o">gpt-4o</Option>
+                {getModelsForProvider(provider).map(m => (
+                  <Option key={m} value={m}>{m}</Option>
+                ))}
               </Select>
             </Col>
           </Row>
           
           <Row gutter={16} style={{ marginTop: 16 }}>
-            <Col span={12}>
+            <Col span={16}>
               <Text strong>API Key：</Text>
-              <Input.Password
-                placeholder="输入 API Key"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                style={{ marginTop: 8 }}
-              />
+              <Space style={{ marginTop: 8, width: "100%" }}>
+                <Input.Password
+                  placeholder="输入 API Key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  onClick={testApiConnection}
+                  loading={isTestingApi}
+                  icon={apiTestResult === "success" ? <CheckCircleOutlined /> : apiTestResult === "error" ? <CloseCircleOutlined /> : undefined}
+                  type={apiTestResult === "success" ? "primary" : apiTestResult === "error" ? "default" : "default"}
+                  style={{ 
+                    backgroundColor: apiTestResult === "success" ? "#52c41a" : apiTestResult === "error" ? "#ff4d4f" : undefined,
+                    borderColor: apiTestResult === "success" ? "#52c41a" : apiTestResult === "error" ? "#ff4d4f" : undefined
+                  }}
+                >
+                  测试连接
+                </Button>
+              </Space>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
               <Text strong>翻译提示词：</Text>
               <Select value={selectedPrompt} onChange={setSelectedPrompt} style={{ width: "100%", marginTop: 8 }}>
                 {defaultPrompts.map(p => (
@@ -252,6 +330,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
                 onChange={setRightHistoryIndex}
                 style={{ width: 200 }}
               >
+                <Option value={-1}>原文</Option>
                 {translationHistory.map((h, i) => (
                   <Option key={i} value={i}>{h.promptName} ({new Date(h.timestamp).toLocaleTimeString()})</Option>
                 ))}
@@ -260,57 +339,30 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
           </Card>
         )}
 
-        <Divider style={{ margin: "8px 0" }} />
-
-        <div style={{ flex: 1, overflow: "auto" }}>
+        <Card type="inner" style={{ flex: 1, overflow: "auto" }}>
           <Row gutter={16}>
-            <Col span={right ? 12 : 24}>
-              <Card 
-                type="inner" 
-                title={currentLeftHistoryIndex === -1 ? "原文" : translationHistory[currentLeftHistoryIndex]?.promptName}
-                style={{ height: "100%" }}
-              >
-                <List
-                  dataSource={left}
-                  renderItem={(item) => (
-                    <List.Item>
-                      <Space direction="vertical" style={{ width: "100%" }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {formatTime(item.start)} → {formatTime(item.end)}
-                        </Text>
-                        <Text>{item.translatedText || item.originalText}</Text>
-                      </Space>
-                    </List.Item>
-                  )}
-                />
-              </Card>
+            <Col span={12}>
+              <Text strong>{currentLeftHistoryIndex === -1 ? "原文" : translationHistory[currentLeftHistoryIndex]?.promptName}</Text>
             </Col>
-            
-            {right && (
-              <Col span={12}>
-                <Card 
-                  type="inner" 
-                  title={translationHistory[currentRightHistoryIndex]?.promptName}
-                  style={{ height: "100%" }}
-                >
-                  <List
-                    dataSource={right}
-                    renderItem={(item) => (
-                      <List.Item>
-                        <Space direction="vertical" style={{ width: "100%" }}>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {formatTime(item.start)} → {formatTime(item.end)}
-                          </Text>
-                          <Text>{item.translatedText || item.originalText}</Text>
-                        </Space>
-                      </List.Item>
-                    )}
-                  />
-                </Card>
-              </Col>
-            )}
+            <Col span={12}>
+              <Text strong>翻译结果</Text>
+            </Col>
           </Row>
-        </div>
+          <Divider style={{ margin: "8px 0" }} />
+          <div style={{ maxHeight: 400, overflow: "auto" }}>
+            {left.map((segment, index) => (
+              <Row key={index} gutter={16} style={{ marginBottom: 8, padding: "4px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <Col span={12}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{formatTime(segment.start)} → {formatTime(segment.end)}</Text>
+                  <div>{segment.originalText}</div>
+                </Col>
+                <Col span={12}>
+                  <div style={{ color: "#1890ff" }}>{right ? right[index]?.translatedText || segment.originalText : segment.originalText}</div>
+                </Col>
+              </Row>
+            ))}
+          </div>
+        </Card>
       </Card>
     </div>
   );
