@@ -425,7 +425,7 @@ async fn translate_subtitle(
             }
             "minimax" => {
                 client
-                    .post("https://api.minimax.chat/v1/text/chatcompletion_pro")
+                    .post("https://api.minimaxi.com/v1/chat/completions")
                     .header("Authorization", format!("Bearer {}", api_key))
                     .json(&request_body)
                     .send()
@@ -482,6 +482,14 @@ async fn translate_subtitle(
     Ok(translated_segments)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MiniMaxChatRequest {
+    model: String,
+    messages: Vec<OpenAIMessage>,
+    temperature: f64,
+    stream: bool,
+}
+
 #[tauri::command]
 async fn test_api_connection(
     provider: &str,
@@ -489,76 +497,133 @@ async fn test_api_connection(
 ) -> Result<bool, String> {
     let client = reqwest::Client::new();
 
-    let request_body = OpenAIChatRequest {
-        model: match provider {
-            "minimax" => "MiniMax-Text-01".to_string(),
-            "deepseek" => "deepseek-chat".to_string(),
-            _ => "gpt-4o-mini".to_string(),
-        },
-        messages: vec![
-            OpenAIMessage {
-                role: "system".to_string(),
-                content: "你是一个测试助手。".to_string(),
-            },
-            OpenAIMessage {
-                role: "user".to_string(),
-                content: "请回复 'OK'".to_string(),
-            },
-        ],
-        temperature: 0.0,
-    };
+    println!("Testing API connection for provider: {}", provider);
 
-    let response = match provider {
-        "openai" => {
-            client
-                .post("https://api.openai.com/v1/chat/completions")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&request_body)
-                .send()
-                .await
-        }
+    let result = match provider {
         "minimax" => {
-            client
-                .post("https://api.minimax.chat/v1/text/chatcompletion_pro")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&request_body)
-                .send()
-                .await
-        }
-        _ => {
-            client
-                .post("https://api.deepseek.com/v1/chat/completions")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&request_body)
-                .send()
-                .await
-        }
-    };
+            let url = "https://api.minimaxi.com/v1/chat/completions";
+            println!("URL: {}", url);
+            
+            let request_body = OpenAIChatRequest {
+                model: "MiniMax-M2.7".to_string(),
+                messages: vec![
+                    OpenAIMessage {
+                        role: "system".to_string(),
+                        content: "你是一个测试助手。".to_string(),
+                    },
+                    OpenAIMessage {
+                        role: "user".to_string(),
+                        content: "请回复 'OK'".to_string(),
+                    },
+                ],
+                temperature: 0.0,
+            };
 
-    match response {
-        Ok(res) => {
-            if res.status().is_success() {
-                let result: Result<OpenAIChatResponse, _> = res.json().await;
-                match result {
-                    Ok(response_text) => {
-                        if let Some(content) = response_text.choices.first().map(|c| &c.message.content) {
-                            if content.contains("OK") || content.contains("ok") || content.contains("Ok") {
-                                Ok(true)
-                            } else {
-                                Ok(true)
-                            }
-                        } else {
-                            Ok(true)
-                        }
-                    }
-                    Err(_) => Ok(false),
+            let response = client
+                .post(url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .json(&request_body)
+                .send()
+                .await;
+
+            match response {
+                Ok(res) => {
+                    let status = res.status();
+                    println!("API response status: {}", status);
+                    let text = res.text().await.unwrap_or_default();
+                    println!("API response body: {}", text);
+                    status.is_success()
                 }
-            } else {
-                Ok(false)
+                Err(e) => {
+                    println!("API request failed: {}", e);
+                    false
+                }
             }
         }
-        Err(_) => Ok(false),
-    }
+        "deepseek" => {
+            let url = "https://api.deepseek.com/v1/chat/completions";
+            println!("URL: {}", url);
+            
+            let request_body = OpenAIChatRequest {
+                model: "deepseek-chat".to_string(),
+                messages: vec![
+                    OpenAIMessage {
+                        role: "system".to_string(),
+                        content: "你是一个测试助手。".to_string(),
+                    },
+                    OpenAIMessage {
+                        role: "user".to_string(),
+                        content: "请回复 'OK'".to_string(),
+                    },
+                ],
+                temperature: 0.0,
+            };
+
+            let response = client
+                .post(url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request_body)
+                .send()
+                .await;
+
+            match response {
+                Ok(res) => {
+                    let status = res.status();
+                    println!("API response status: {}", status);
+                    let text = res.text().await.unwrap_or_default();
+                    println!("API response body: {}", text);
+                    status.is_success()
+                }
+                Err(e) => {
+                    println!("API request failed: {}", e);
+                    false
+                }
+            }
+        }
+        _ => {
+            let url = "https://api.openai.com/v1/chat/completions";
+            println!("URL: {}", url);
+            
+            let request_body = OpenAIChatRequest {
+                model: "gpt-4o-mini".to_string(),
+                messages: vec![
+                    OpenAIMessage {
+                        role: "system".to_string(),
+                        content: "你是一个测试助手。".to_string(),
+                    },
+                    OpenAIMessage {
+                        role: "user".to_string(),
+                        content: "请回复 'OK'".to_string(),
+                    },
+                ],
+                temperature: 0.0,
+            };
+
+            let response = client
+                .post(url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request_body)
+                .send()
+                .await;
+
+            match response {
+                Ok(res) => {
+                    let status = res.status();
+                    println!("API response status: {}", status);
+                    let text = res.text().await.unwrap_or_default();
+                    println!("API response body: {}", text);
+                    status.is_success()
+                }
+                Err(e) => {
+                    println!("API request failed: {}", e);
+                    false
+                }
+            }
+        }
+    };
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -632,6 +697,7 @@ fn main() {
             get_audio_duration,
             transcribe_audio,
             translate_subtitle,
+            test_api_connection,
             export_srt,
         ])
         .run(tauri::generate_context!())

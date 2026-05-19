@@ -107,7 +107,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       case "openai":
         return ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"];
       case "minimax":
-        return ["MiniMax-Text-01", "MiniMax-M2.6", "abab6.5s-chat"];
+        return ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-Text-01"];
       case "deepseek":
         return ["deepseek-chat", "deepseek-coder"];
       case "custom":
@@ -140,6 +140,10 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   };
 
   const testApiConnection = async () => {
+    console.log("testApiConnection called");
+    console.log("provider:", provider);
+    console.log("apiKey length:", apiKey.length);
+    
     if (!apiKey) {
       message.warning("请先输入 API Key");
       return;
@@ -149,11 +153,13 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     setApiTestResult(null);
 
     try {
+      console.log("Calling invoke test_api_connection");
       const { invoke } = await import("@tauri-apps/api/core");
       const result = await invoke<boolean>("test_api_connection", {
         provider,
-        apiKey
+        api_key: apiKey
       });
+      console.log("API test result:", result);
 
       if (result) {
         setApiTestResult("success");
@@ -163,6 +169,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
         message.error("API 连接测试失败，请检查 API Key 是否正确");
       }
     } catch (error) {
+      console.error("API test error:", error);
       setApiTestResult("error");
       message.error("API 连接测试失败，请检查网络连接或 API Key");
     } finally {
