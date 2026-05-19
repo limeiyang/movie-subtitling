@@ -2,9 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubtitleSegment {
@@ -16,6 +18,13 @@ pub struct SubtitleSegment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionResult {
+    pub segments: Vec<SubtitleSegment>,
+    pub detected_language: String,
+    pub processing_duration: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoFileInfo {
     pub path: String,
     pub name: String,
@@ -23,8 +32,8 @@ pub struct VideoFileInfo {
 }
 
 #[tauri::command]
-async fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+async fn greet(name: &str) -> Result<String, String> {
+    Ok(format!("Hello, {}! You've been greeted from Rust!", name))
 }
 
 #[tauri::command]
@@ -48,33 +57,166 @@ async fn select_video_file() -> Result<VideoFileInfo, String> {
 }
 
 #[tauri::command]
-async fn extract_audio(video_path: &str) -> Result<String, String> {
-    let input_path = PathBuf::from(video_path);
-    let mut output_path = input_path.clone();
-    output_path.set_extension("wav");
+async fn select_models_directory() -> Result<String, String> {
+    let dir = rfd::FileDialog::new()
+        .set_directory(".")
+        .pick_folder()
+        .ok_or("No directory selected".to_string())?;
 
-    let output = Command::new("ffmpeg")
+    Ok(dir.to_string_lossy().to_string())
+}
+
+fn find_model_files(path: &Path, status: &mut HashMap<String, PathBuf>, safetensors_found: &mut bool) {
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            
+            if file_type.is_dir() {
+                find_model_files(&entry.path(), status, safetensors_found);
+            } else if file_type.is_file() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.ends_with(".bin") {
+                    status.insert(file_name, entry.path());
+                } else if file_name.ends_with(".safetensors") {
+                    *safetensors_found = true;
+                }
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn check_model_files(models_path: &str, _models: Vec<String>) -> Result<HashMap<String, String>, String> {
+    let mut status = HashMap::new();
+    let path = PathBuf::from(models_path);
+    let mut safetensors_found = false;
+
+    if path.exists() {
+        if path.is_dir() {
+            let mut files = HashMap::new();
+            find_model_files(&path, &mut files, &mut safetensors_found);
+            
+            let files_is_empty = files.is_empty();
+            
+            for (name, full_path) in files {
+                status.insert(name, full_path.to_string_lossy().to_string());
+            }
+            
+            if safetensors_found && files_is_empty {
+                status.insert("_safetensors_detected".to_string(), "true".to_string());
+            }
+        } else if path.is_file() && path.extension().map_or(false, |ext| ext == "bin") {
+            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+            status.insert(file_name, path.to_string_lossy().to_string());
+        }
+    }
+
+    Ok(status)
+}
+
+#[tauri::command]
+async fn extract_audio(video_path: &str) -> Result<String, String> {
+    println!("extract_audio called with path: {}", video_path);
+    
+    let input_path = PathBuf::from(video_path);
+    
+    if !input_path.exists() {
+        return Err(format!("Input file does not exist: {}", video_path));
+    }
+    
+    let file_stem = input_path.file_stem()
+        .ok_or("Could not get file stem")?
+        .to_string_lossy();
+    
+    let project_root = match std::env::current_dir() {
+        Ok(dir) => dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from(".")),
+        Err(_) => PathBuf::from("."),
+    };
+    
+    let temp_dir = project_root.join("temp");
+    match std::fs::create_dir_all(&temp_dir) {
+        Ok(_) => println!("Temp directory created at: {:?}", temp_dir),
+        Err(e) => {
+            println!("Warning: could not create temp directory: {}", e);
+        }
+    }
+    
+    let output_path = temp_dir.join(format!("{}.wav", file_stem));
+    
+    println!("Output path: {:?}", output_path);
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(300),
+        tokio::process::Command::new("ffmpeg")
+            .args([
+                "-i",
+                video_path,
+                "-vn",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-y",
+                output_path.to_str().ok_or("Invalid output path")?,
+            ])
+            .output()
+    ).await;
+
+    match output {
+        Ok(Ok(output)) => {
+            if output.status.success() {
+                let result = output_path.to_string_lossy().to_string();
+                println!("Audio extraction successful: {}", result);
+                Ok(result)
+            } else {
+                let error = String::from_utf8_lossy(&output.stderr);
+                let msg = format!("FFmpeg failed: {}", error);
+                println!("{}", msg);
+                Err(msg)
+            }
+        }
+        Ok(Err(e)) => {
+            let msg = format!("Failed to execute FFmpeg: {}", e);
+            println!("{}", msg);
+            Err(msg)
+        }
+        Err(_) => {
+            let msg = "FFmpeg execution timed out".to_string();
+            println!("{}", msg);
+            Err(msg)
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_audio_duration(audio_path: &str) -> Result<f64, String> {
+    let output = tokio::process::Command::new("ffprobe")
         .args([
-            "-i",
-            video_path,
-            "-vn",
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-y",
-            output_path.to_str().ok_or("Invalid output path")?,
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_path
         ])
         .output()
-        .map_err(|e| format!("Failed to execute FFmpeg: {}", e))?;
+        .await;
 
-    if output.status.success() {
-        Ok(output_path.to_string_lossy().to_string())
-    } else {
-        let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg failed: {}", error))
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                let duration_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let duration = duration_str.parse::<f64>()
+                    .map_err(|_| "Failed to parse duration".to_string())?;
+                Ok(duration)
+            } else {
+                Err("Failed to get audio duration".to_string())
+            }
+        }
+        Err(e) => Err(format!("Failed to execute ffprobe: {}", e))
     }
 }
 
@@ -82,14 +224,35 @@ async fn extract_audio(video_path: &str) -> Result<String, String> {
 async fn transcribe_audio(
     audio_path: &str,
     model: &str,
-    use_cloud: bool,
-    api_key: Option<String>,
-) -> Result<Vec<SubtitleSegment>, String> {
-    // 使用本地 Whisper 模型
-    let ctx = whisper_rs::WhisperContext::new(&format!("./models/ggml-{}.bin", model))
-        .map_err(|e| format!("Failed to load Whisper model: {}", e))?;
+    models_path: Option<&str>,
+    _use_cloud: bool,
+    _api_key: Option<String>,
+) -> Result<TranscriptionResult, String> {
+    let start_time = std::time::Instant::now();
+    
+    let model_path = match models_path {
+        Some(path) => {
+            let mut p = PathBuf::from(path);
+            p.push(model);
+            p.to_string_lossy().to_string()
+        }
+        None => {
+            let mut p = PathBuf::from("./models");
+            p.push(model);
+            p.to_string_lossy().to_string()
+        }
+    };
 
-    let mut params = whisper_rs::FullParams::new();
+    if !PathBuf::from(&model_path).exists() {
+        return Err(format!("Model file not found: {}", model_path));
+    }
+
+    let ctx = whisper_rs::WhisperContext::new_with_params(
+        &model_path,
+        whisper_rs::WhisperContextParameters::default()
+    ).map_err(|e| format!("Failed to load Whisper model: {}", e))?;
+
+    let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
     params.set_language(Some("auto"));
     params.set_translate(false);
     params.set_print_progress(true);
@@ -98,19 +261,42 @@ async fn transcribe_audio(
         .create_state()
         .map_err(|e| format!("Failed to create Whisper state: {}", e))?;
 
+    let audio_data = fs::read(audio_path).map_err(|e| format!("Failed to read audio file: {}", e))?;
+    
+    let audio_f32: Vec<f32> = audio_data
+        .chunks(2)
+        .map(|chunk| {
+            if chunk.len() == 2 {
+                i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    
     state
-        .process_audio_file(audio_path, params)
+        .full(params, &audio_f32)
         .map_err(|e| format!("Failed to process audio: {}", e))?;
 
-    let num_segments = state.full_n_segments();
+    let detected_language = match state.full_lang_id_from_state() {
+        Ok(lang_id) => {
+            match whisper_rs::get_lang_str(lang_id) {
+                Some(lang) => lang.to_string(),
+                None => "auto".to_string(),
+            }
+        }
+        Err(_) => "auto".to_string(),
+    };
+
+    let num_segments = state.full_n_segments().map_err(|e| format!("Failed to get segments: {}", e))?;
     let mut segments = Vec::new();
 
     for i in 0..num_segments {
-        let start = state.full_get_segment_t0(i) as f64 / 100.0;
-        let end = state.full_get_segment_t1(i) as f64 / 100.0;
+        let start = state.full_get_segment_t0(i).map_err(|e| format!("Failed to get segment start: {}", e))? as f64 / 100.0;
+        let end = state.full_get_segment_t1(i).map_err(|e| format!("Failed to get segment end: {}", e))? as f64 / 100.0;
         let text = state
             .full_get_segment_text(i)
-            .unwrap_or_default()
+            .map_err(|e| format!("Failed to get segment text: {}", e))?
             .trim()
             .to_string();
 
@@ -125,7 +311,13 @@ async fn transcribe_audio(
         }
     }
 
-    Ok(segments)
+    let processing_duration = start_time.elapsed().as_secs_f64();
+
+    Ok(TranscriptionResult {
+        segments,
+        detected_language,
+        processing_duration,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +356,6 @@ async fn translate_subtitle(
     let client = reqwest::Client::new();
     let mut translated_segments = Vec::new();
 
-    // 批量处理，每次10条
     for chunk in segments.chunks(10) {
         let combined_text: Vec<String> = chunk
             .iter()
@@ -326,7 +517,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             greet,
             select_video_file,
+            select_models_directory,
+            check_model_files,
             extract_audio,
+            get_audio_duration,
             transcribe_audio,
             translate_subtitle,
             export_srt,
