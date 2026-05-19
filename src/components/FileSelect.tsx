@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { Button, Card, Upload, Typography, Space, message, Progress } from "antd";
-import { InboxOutlined, AudioOutlined, FontSizeOutlined, FileTextOutlined } from "@ant-design/icons";
+import { Button, Card, Upload, Typography, Space, message, Progress, Input } from "antd";
+import { InboxOutlined, AudioOutlined, FontSizeOutlined, FileTextOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/useAppStore";
 
 const { Dragger } = Upload;
@@ -17,6 +17,7 @@ function FileSelect({ onNext }: FileSelectProps) {
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState<"idle" | "extracting" | "transcribing">("idle");
   const [isTauriAvailable, setIsTauriAvailable] = useState(false);
+  const [subtitleSavePath, setSubtitleSavePath] = useState<string>("");
 
   useEffect(() => {
     // 检测是否在 Tauri 环境中
@@ -30,6 +31,33 @@ function FileSelect({ onNext }: FileSelectProps) {
       setIsTauriAvailable(false);
     }
   }, []);
+
+  useEffect(() => {
+    const savedPath = localStorage.getItem("subtitle_save_path");
+    if (savedPath) {
+      setSubtitleSavePath(savedPath);
+    }
+  }, []);
+
+  const handleSelectSaveFolder = async () => {
+    if (!isTauriAvailable) {
+      message.warning("此功能需要桌面应用模式");
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const folderPath = await invoke<string>("select_save_folder");
+      if (folderPath) {
+        setSubtitleSavePath(folderPath);
+        localStorage.setItem("subtitle_save_path", folderPath);
+        message.success("保存路径已设置");
+      }
+    } catch (error) {
+      console.error("Failed to select folder:", error);
+      message.error("选择文件夹失败");
+    }
+  };
 
   const handleSelectFile = async () => {
     if (isTauriAvailable) {
@@ -198,10 +226,34 @@ function FileSelect({ onNext }: FileSelectProps) {
               size="large" 
               icon={<FileTextOutlined />}
               onClick={handleSelectSrtFile}
-              style={{ marginBottom: 24, width: "100%", height: 60 }}
+              style={{ marginBottom: 12, width: "100%", height: 60 }}
             >
               直接导入 SRT 文件（跳过语音转写）
             </Button>
+
+            <Card type="inner" style={{ marginBottom: 24 }}>
+              <Space direction="vertical" style={{ width: "100%" }}>
+                <Text strong>字幕保存路径：</Text>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <Input
+                    value={subtitleSavePath || "默认保存到临时目录"}
+                    style={{ flex: 1 }}
+                    disabled
+                    placeholder="选择保存字幕的文件夹"
+                  />
+                  <Button
+                    type="default"
+                    icon={<FolderOpenOutlined />}
+                    onClick={handleSelectSaveFolder}
+                  >
+                    选择文件夹
+                  </Button>
+                </div>
+                <Text type="secondary">
+                  转写完成后，字幕文件将自动保存到此目录
+                </Text>
+              </Space>
+            </Card>
 
             <Dragger {...props} style={{ marginBottom: 24 }}>
               <p className="ant-upload-drag-icon">

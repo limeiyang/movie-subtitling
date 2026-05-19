@@ -67,6 +67,20 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
   const [audioDuration, setAudioDuration] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
   const [subtitleSavePath, setSubtitleSavePath] = useState<string>("");
+  const [isTauriAvailable, setIsTauriAvailable] = useState(false);
+
+  useEffect(() => {
+    // 检测是否在 Tauri 环境中
+    try {
+      import("@tauri-apps/api/core").then(() => {
+        setIsTauriAvailable(true);
+      }).catch(() => {
+        setIsTauriAvailable(false);
+      });
+    } catch {
+      setIsTauriAvailable(false);
+    }
+  }, []);
 
   useEffect(() => {
     const savedPath = localStorage.getItem("subtitle_save_path");
@@ -74,28 +88,6 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       setSubtitleSavePath(savedPath);
     }
   }, []);
-
-  const handleSelectSaveFolder = async () => {
-    if (!isTauriAvailable) {
-      message.warning("此功能需要桌面应用模式");
-      return;
-    }
-
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const folderPath = await invoke<string>("select_save_folder");
-      if (folderPath) {
-        setSubtitleSavePath(folderPath);
-        localStorage.setItem("subtitle_save_path", folderPath);
-        message.success("保存路径已设置");
-      }
-    } catch (error) {
-      console.error("Failed to select folder:", error);
-      message.error("选择文件夹失败");
-    }
-  };
-
-  const isTauriAvailable = typeof window !== "undefined" && !!(window as any).__TAURI__;
 
   useEffect(() => {
     if (savedModelPath && !whisperModelsPath) {
@@ -495,30 +487,6 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
             <Radio value="cloud">云服务模式 (OpenAI Whisper API)</Radio>
           </Space>
         </Radio.Group>
-
-        <Card type="inner" style={{ marginBottom: 24 }}>
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Text strong>字幕保存路径：</Text>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Input
-                value={subtitleSavePath || "默认保存到临时目录"}
-                style={{ flex: 1 }}
-                disabled
-                placeholder="选择保存字幕的文件夹"
-              />
-              <Button
-                type="default"
-                icon={<FolderOpenOutlined />}
-                onClick={handleSelectSaveFolder}
-              >
-                选择文件夹
-              </Button>
-            </div>
-            <Text type="secondary">
-              转写完成后，字幕文件将自动保存到此目录
-            </Text>
-          </Space>
-        </Card>
 
         {mode === "local" && (
           <Card type="inner" style={{ marginBottom: 24 }}>
