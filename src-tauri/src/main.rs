@@ -482,14 +482,6 @@ async fn translate_subtitle(
     Ok(translated_segments)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct MiniMaxChatRequest {
-    model: String,
-    messages: Vec<OpenAIMessage>,
-    temperature: f64,
-    stream: bool,
-}
-
 #[tauri::command]
 async fn test_api_connection(
     provider: &str,
