@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubtitleSegment {
     pub index: u32,
     pub start: f64,
