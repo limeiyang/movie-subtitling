@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, List, Progress, message } from "antd";
+import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, Progress, message } from "antd";
 import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
 

@@ -11,7 +11,7 @@ interface FileSelectProps {
 }
 
 function FileSelect({ onNext }: FileSelectProps) {
-  const { videoFile, videoPath, setVideoFile, setAudioPath, setOriginalSegments } = useAppStore();
+  const { videoFile, videoPath, setVideoFile, setAudioPath } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);

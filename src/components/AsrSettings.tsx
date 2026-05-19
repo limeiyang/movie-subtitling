@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Radio, Select, Typography, Space, Input, Divider, Alert, Tooltip, Modal, Tag, Progress, message } from "antd";
-import { FolderOpenOutlined, DownloadOutlined, CheckCircleOutlined, WarningOutlined, InfoCircleOutlined, PlayCircleOutlined, ClockCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Button, Card, Radio, Select, Typography, Space, Input, Divider, Alert, Modal, Tag, Progress, message } from "antd";
+import { FolderOpenOutlined, DownloadOutlined, WarningOutlined, InfoCircleOutlined, PlayCircleOutlined, ClockCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/useAppStore";
 
 const { Title, Text } = Typography;
@@ -67,7 +67,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
   const [audioDuration, setAudioDuration] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
 
-  const isTauriAvailable = typeof window !== "undefined" && window.__TAURI__ !== undefined;
+  const isTauriAvailable = typeof window !== "undefined" && !!(window as any).__TAURI__;
 
   useEffect(() => {
     if (savedModelPath && !whisperModelsPath) {
@@ -484,7 +484,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
                       </Text>
                       <br />
                       {(() => {
-                        const { speed, numRuns, totalProcessed, totalProcessing } = calculateAverageSpeed();
+                        const { speed, numRuns } = calculateAverageSpeed();
                         if (numRuns > 0 && speed > 0) {
                           const estTime = audioDuration / speed;
                           return (
