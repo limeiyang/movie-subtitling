@@ -485,7 +485,7 @@ async fn translate_subtitle(
 #[tauri::command]
 async fn test_api_connection(
     provider: &str,
-    api_key: &str,
+    apikey: &str,
 ) -> Result<bool, String> {
     let client = reqwest::Client::new();
 
@@ -513,7 +513,7 @@ async fn test_api_connection(
 
             let response = client
                 .post(url)
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {}", apikey))
                 .header("Content-Type", "application/json")
                 .json(&request_body)
                 .send()

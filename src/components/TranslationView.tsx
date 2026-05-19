@@ -156,8 +156,8 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       console.log("Calling invoke test_api_connection");
       const { invoke } = await import("@tauri-apps/api/core");
       const result = await invoke<boolean>("test_api_connection", {
-        provider,
-        api_key: apiKey
+        provider: provider,
+        apikey: apiKey
       });
       console.log("API test result:", result);
 
