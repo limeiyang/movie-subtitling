@@ -194,11 +194,11 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       const segments: StoreSubtitleSegment[] = await invoke("translate_subtitle", {
         segments: originalSegments,
         provider,
-        apiKey,
+        api_key: apiKey,
         model,
-        fromLang: fromLang === "自动检测" ? "English" : fromLang,
-        toLang,
-        systemPrompt
+        from_lang: fromLang === "自动检测" ? "English" : fromLang,
+        to_lang: toLang,
+        system_prompt: systemPrompt
       });
 
       addTranslation({
