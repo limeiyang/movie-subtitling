@@ -355,17 +355,47 @@ async fn translate_subtitle(
 ) -> Result<Vec<SubtitleSegment>, String> {
     let client = reqwest::Client::new();
     let mut translated_segments = Vec::new();
+    let batch_size = 50;
+    let context_size = 10;
 
-    for chunk in segments.chunks(10) {
-        let combined_text: Vec<String> = chunk
-            .iter()
-            .map(|s| format!("[{}] {}", s.index, s.original_text))
-            .collect();
-        let combined_text = combined_text.join("\n---\n");
+    for (batch_idx, chunk) in segments.chunks(batch_size).enumerate() {
+        let start_idx = batch_idx * batch_size;
+        let end_idx = start_idx + chunk.len();
+        
+        let context_start = if start_idx > context_size { start_idx - context_size } else { 0 };
+        let context_end = if end_idx + context_size < segments.len() { end_idx + context_size } else { segments.len() };
+        
+        let mut context_text = String::new();
+        if context_start < start_idx {
+            context_text.push_str("【上文参考】\n");
+            for seg in &segments[context_start..start_idx] {
+                context_text.push_str(&format!("[{}] {}\n", seg.index, seg.original_text));
+            }
+            context_text.push_str("\n");
+        }
+        
+        let mut target_text = String::new();
+        for seg in chunk {
+            target_text.push_str(&format!("[{}] {}\n---\n", seg.index, seg.original_text));
+        }
+        target_text.pop();
+        target_text.pop();
+        target_text.pop();
+        
+        let mut following_context = String::new();
+        if context_end > end_idx {
+            following_context.push_str("\n【下文参考】\n");
+            for seg in &segments[end_idx..context_end] {
+                following_context.push_str(&format!("[{}] {}\n", seg.index, seg.original_text));
+            }
+        }
 
         let user_prompt = format!(
-            "Translate the following {} text to {}. Keep the same format with [number] prefix and --- separators:\n\n{}",
-            from_lang, to_lang, combined_text
+            "请将以下{}文本翻译成{}。\n\n翻译规则：\n1. 保持原文的[数字]序号前缀和---分隔符格式\n2. 参考上下文语境给出合适的翻译结果，确保语义连贯\n3. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n4. 翻译结果保持与原文相同的行数和格式\n\n【上文参考】（用于理解语境）\n{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}",
+            from_lang, to_lang, 
+            if context_start < start_idx { &context_text[4..] } else { "" },
+            target_text,
+            if context_end > end_idx { &following_context[4..] } else { "" }
         );
 
         let request_body = OpenAIChatRequest {
