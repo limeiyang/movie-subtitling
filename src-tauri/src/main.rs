@@ -656,6 +656,15 @@ async fn select_save_path(default_path: &str, filter_name: &str, filter_ext: &st
 }
 
 #[tauri::command]
+async fn select_save_folder() -> Result<String, String> {
+    let folder = rfd::FileDialog::new()
+        .pick_folder()
+        .ok_or("No folder selected".to_string())?;
+
+    Ok(folder.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 async fn parse_srt_file(file_path: &str) -> Result<Vec<SubtitleSegment>, String> {
     let content = fs::read_to_string(file_path)
         .map_err(|e| format!("Failed to read SRT file: {}", e))?;
@@ -793,6 +802,7 @@ fn main() {
             select_srt_file,
             parse_srt_file,
             select_save_path,
+            select_save_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
