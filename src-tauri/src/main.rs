@@ -643,7 +643,7 @@ async fn select_save_path(default_path: &str, filter_name: &str, filter_ext: &st
         if let Some(parent) = default_path_buf.parent() {
             dialog = dialog.set_directory(parent);
         }
-        if let Some(file_name) = default_path_buf.file_name() {
+        if let Some(file_name) = default_path_buf.file_name().and_then(|n| n.to_str()) {
             dialog = dialog.set_file_name(file_name);
         }
     }
