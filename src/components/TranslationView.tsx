@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, List, Progress, message } from "antd";
 import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
@@ -34,6 +34,8 @@ const defaultPrompts: PromptTemplate[] = [
     userPromptTemplate: "将以下 {from} 文本翻译为 {to}：{text}"
   }
 ];
+
+const CONFIG_KEY = "subtitle_translation_config";
 
 function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const { 
@@ -71,6 +73,35 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<"success" | "error" | null>(null);
 
+  useEffect(() => {
+    const saved = localStorage.getItem(CONFIG_KEY);
+    if (saved) {
+      try {
+        const config = JSON.parse(saved);
+        if (config.provider) setProvider(config.provider as LLMProvider);
+        if (config.apiKey) setApiKey(config.apiKey);
+        if (config.model) setModel(config.model);
+        if (config.fromLang) setFromLang(config.fromLang);
+        if (config.toLang) setToLang(config.toLang);
+        if (config.selectedPrompt) setSelectedPrompt(config.selectedPrompt);
+      } catch (e) {
+        console.error("Failed to load config:", e);
+      }
+    }
+  }, []);
+
+  const saveConfig = () => {
+    const config = {
+      provider,
+      apiKey: apiKey ? "***" : "",
+      model,
+      fromLang,
+      toLang,
+      selectedPrompt
+    };
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  };
+
   const getModelsForProvider = (prov: LLMProvider): string[] => {
     switch (prov) {
       case "openai":
@@ -91,6 +122,21 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     const models = getModelsForProvider(newProvider);
     setModel(models[0]);
     setApiTestResult(null);
+    saveConfig();
+  };
+
+  const handleModelChange = (newModel: string) => {
+    setModel(newModel);
+    saveConfig();
+  };
+
+  const handleApiKeyChange = (value: string) => {
+    setApiKey(value);
+    setApiTestResult(null);
+  };
+
+  const handleLangChange = () => {
+    saveConfig();
   };
 
   const testApiConnection = async () => {
@@ -103,8 +149,20 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     setApiTestResult(null);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const { invoke } = await import("@tauri-apps/api/core");
+      const result = await invoke<boolean>("test_api_connection", {
+        provider,
+        apiKey
+      });
+
+      if (result) {
+        setApiTestResult("success");
+        message.success("API 连接测试成功！");
+      } else {
+        setApiTestResult("error");
+        message.error("API 连接测试失败");
+      }
+    } catch (error) {
       let isValid = false;
       if (provider === "openai") {
         isValid = apiKey.startsWith("sk-");
@@ -118,67 +176,56 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
       if (isValid) {
         setApiTestResult("success");
-        message.success("API 连接测试成功！");
+        message.success("API Key 格式验证通过！");
       } else {
         setApiTestResult("error");
         message.error("API Key 格式不正确");
       }
-    } catch (error) {
-      setApiTestResult("error");
-      message.error("API 连接测试失败");
     } finally {
       setIsTestingApi(false);
     }
   };
 
   const handleTranslate = async () => {
+    if (!apiKey) {
+      message.warning("请先输入 API Key");
+      return;
+    }
+
     setIsTranslating(true);
     setProgress(0);
-    mockTranslate();
-  };
 
-  const mockTranslate = async () => {
-    setIsTranslating(true);
-    setProgress(0);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const prompt = defaultPrompts.find(p => p.id === selectedPrompt);
+      const systemPrompt = prompt?.systemPrompt || "你是一个专业的字幕翻译员。";
 
-    const doTranslate = async () => {
-      const segments = originalSegments;
-      let progressStep = 100 / segments.length;
-      let currentProgress = 0;
-
-      for (let i = 0; i < segments.length; i += 10) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        currentProgress += Math.min(10 * progressStep, 100);
-        setProgress(Math.min(currentProgress, 100));
-      }
-
-      const translated: StoreSubtitleSegment[] = originalSegments.map(seg => ({
-        ...seg,
-        translatedText: seg.originalText
-          .replace("Hello", "你好")
-          .replace("welcome", "欢迎")
-          .replace("video", "视频")
-          .replace("AI technology", "AI技术")
-          .replace("changing the world", "改变世界")
-          .replace("Let's get started", "让我们开始")
-          .replace("basics", "基础知识")
-          .replace("First", "首先")
-          .replace("understand", "了解")
-          .replace("machine learning", "机器学习")
-      }));
+      const segments: StoreSubtitleSegment[] = await invoke("translate_subtitle", {
+        segments: originalSegments,
+        provider,
+        apiKey,
+        model,
+        fromLang: fromLang === "自动检测" ? "English" : fromLang,
+        toLang,
+        systemPrompt
+      });
 
       addTranslation({
         id: Date.now().toString(),
         promptId: selectedPrompt,
-        promptName: defaultPrompts.find(p => p.id === selectedPrompt)?.name || "自定义",
-        result: translated,
+        promptName: prompt?.name || "自定义",
+        result: segments,
         timestamp: Date.now()
       });
 
+      setProgress(100);
+      message.success("翻译完成！");
+    } catch (error) {
+      console.error("Translation error:", error);
+      message.error("翻译失败，请检查 API Key 和网络连接");
+    } finally {
       setIsTranslating(false);
-    };
-
-    doTranslate();
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -223,7 +270,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
           <Row gutter={16}>
             <Col span={6}>
               <Text strong>源语言：</Text>
-              <Select value={fromLang} onChange={setFromLang} style={{ width: "100%", marginTop: 8 }}>
+              <Select value={fromLang} onChange={(v) => { setFromLang(v); handleLangChange(); }} style={{ width: "100%", marginTop: 8 }}>
                 <Option value="英文">英文</Option>
                 <Option value="日文">日文</Option>
                 <Option value="韩文">韩文</Option>
@@ -232,7 +279,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
             </Col>
             <Col span={6}>
               <Text strong>目标语言：</Text>
-              <Select value={toLang} onChange={setToLang} style={{ width: "100%", marginTop: 8 }}>
+              <Select value={toLang} onChange={(v) => { setToLang(v); handleLangChange(); }} style={{ width: "100%", marginTop: 8 }}>
                 <Option value="中文">中文</Option>
                 <Option value="英文">英文</Option>
                 <Option value="日文">日文</Option>
@@ -249,7 +296,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
             </Col>
             <Col span={6}>
               <Text strong>模型：</Text>
-              <Select value={model} onChange={setModel} style={{ width: "100%", marginTop: 8 }}>
+              <Select value={model} onChange={handleModelChange} style={{ width: "100%", marginTop: 8 }}>
                 {getModelsForProvider(provider).map(m => (
                   <Option key={m} value={m}>{m}</Option>
                 ))}
@@ -264,7 +311,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
                 <Input.Password
                   placeholder="输入 API Key"
                   value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  onChange={(e) => handleApiKeyChange(e.target.value)}
                   style={{ flex: 1 }}
                 />
                 <Button
@@ -283,7 +330,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
             </Col>
             <Col span={8}>
               <Text strong>翻译提示词：</Text>
-              <Select value={selectedPrompt} onChange={setSelectedPrompt} style={{ width: "100%", marginTop: 8 }}>
+              <Select value={selectedPrompt} onChange={(v) => { setSelectedPrompt(v); saveConfig(); }} style={{ width: "100%", marginTop: 8 }}>
                 {defaultPrompts.map(p => (
                   <Option key={p.id} value={p.id}>{p.name}</Option>
                 ))}
@@ -293,7 +340,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
           {isTranslating && (
             <div style={{ marginTop: 16 }}>
-              <Progress percent={progress} status="active" />
+              <Progress percent={Math.round(progress)} status="active" />
               <Text type="secondary">正在翻译，请稍候...</Text>
             </div>
           )}
