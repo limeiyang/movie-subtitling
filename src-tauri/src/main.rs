@@ -554,7 +554,7 @@ async fn test_api_connection(
 
             let response = client
                 .post(url)
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {}", apikey))
                 .json(&request_body)
                 .send()
                 .await;
@@ -594,7 +594,7 @@ async fn test_api_connection(
 
             let response = client
                 .post(url)
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {}", apikey))
                 .json(&request_body)
                 .send()
                 .await;
