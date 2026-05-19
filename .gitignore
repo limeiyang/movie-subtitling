@@ -18,12 +18,17 @@ Thumbs.db
 
 src-tauri/target/
 src-tauri/.cargo/
+src-tauri/gen/
+src-tauri/temp/
+src-tauri/icons_backup/
 Cargo.lock
 
 models/*.bin
 models/*.onnx
 models/*.pt
 models/*.pth
+models/whisper-large-v3-turbo/
+temp/
 
 *.log
 npm-debug.log*

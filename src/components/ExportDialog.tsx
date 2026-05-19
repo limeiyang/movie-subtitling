@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { Button, Card, Select, Typography, Space, Radio, Divider, Alert, Input } from "antd";
+import { Button, Card, Typography, Space, Radio, Divider, Alert } from "antd";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
-import { invoke } from "@tauri-apps/api/core";
 
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 interface ExportDialogProps {
   onBack: () => void;
@@ -15,9 +13,7 @@ type ExportMode = "translated" | "original" | "bilingual-top-bottom" | "bilingua
 function ExportDialog({ onBack }: ExportDialogProps) {
   const { translationHistory, originalSegments, currentRightHistoryIndex } = useAppStore();
   const [mode, setMode] = useState<ExportMode>("translated");
-  const [outputPath, setOutputPath] = useState("");
   const [exported, setExported] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
 
   const getSelectedSegments = (): StoreSubtitleSegment[] => {
     if (translationHistory.length === 0) return originalSegments;
@@ -68,7 +64,6 @@ function ExportDialog({ onBack }: ExportDialogProps) {
     const segments = getSelectedSegments();
     const content = generateSrtContent(segments, mode);
 
-    // 创建下载链接
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -81,72 +76,67 @@ function ExportDialog({ onBack }: ExportDialogProps) {
     setExported(true);
   };
 
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      const segments = getSelectedSegments().map((s) => ({
-        index: s.index,
-        start: s.start,
-        end: s.end,
-        original_text: s.originalText,
-        translated_text: s.translatedText,
-      }));
-      
-      await invoke("export_srt", {
-        segments,
-        outputPath,
-        mode,
-      });
-      
-      setExported(true);
-    } catch (error) {
-      console.error("Export failed:", error);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const previewContent = () => {
-    const segments = getSelectedSegments();
-    return generateSrtContent(segments.slice(0, 3), mode);
-  };
+  const segments = getSelectedSegments();
+  const previewSegments = segments.slice(0, 3);
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <Card>
         <Title level={3} style={{ marginBottom: 24 }}>导出字幕</Title>
 
-        <Card type="inner" style={{ marginBottom: 24 }}>
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Text strong>导出模式：</Text>
-            <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)}>
-              <Space direction="vertical">
-                <Radio value="translated">仅译文</Radio>
-                <Radio value="original">仅原文</Radio>
-                <Radio value="bilingual-top-bottom">双语字幕 - 上下显示</Radio>
-                <Radio value="bilingual-left-right">双语字幕 - 左右对照</Radio>
-              </Space>
-            </Radio.Group>
-          </Space>
-        </Card>
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Text strong>导出模式：</Text>
+          <Radio.Group
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            <Radio value="translated">仅译文</Radio>
+            <Radio value="original">仅原文</Radio>
+            <Radio value="bilingual-top-bottom">双语字幕 - 上下显示</Radio>
+            <Radio value="bilingual-left-right">双语字幕 - 左右对照</Radio>
+          </Radio.Group>
+        </Space>
 
-        <Card type="inner" title="预览（前3条）" style={{ marginBottom: 24 }}>
-          <pre style={{ 
-            background: "#f5f5f5", 
-            padding: 16, 
-            borderRadius: 4, 
-            margin: 0,
-            fontSize: 13,
-            maxHeight: 300,
-            overflow: "auto"
-          }}>
-            {previewContent()}
-          </pre>
+        <Divider />
+
+        <Text strong>预览：</Text>
+        <Card type="inner" style={{ marginTop: 12, marginBottom: 24 }}>
+          {previewSegments.map((seg) => (
+            <div key={seg.index} style={{ marginBottom: 16 }}>
+              <Text type="secondary">
+                {formatTime(seg.start)} → {formatTime(seg.end)}
+              </Text>
+              <div>
+                {mode === "bilingual-top-bottom" ? (
+                  <>
+                    <div>{seg.originalText}</div>
+                    <div style={{ color: "#1890ff" }}>
+                      {seg.translatedText || seg.originalText}
+                    </div>
+                  </>
+                ) : mode === "bilingual-left-right" ? (
+                  <span>
+                    {seg.originalText} | <span style={{ color: "#1890ff" }}>{seg.translatedText || seg.originalText}</span>
+                  </span>
+                ) : mode === "original" ? (
+                  seg.originalText
+                ) : (
+                  <span style={{ color: "#1890ff" }}>
+                    {seg.translatedText || seg.originalText}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+          {segments.length > 3 && (
+            <Text type="secondary">... 还有 {segments.length - 3} 条</Text>
+          )}
         </Card>
 
         {exported && (
           <Alert
-            message="导出成功！"
+            message="字幕文件已成功导出！"
             type="success"
             showIcon
             style={{ marginBottom: 24 }}
@@ -157,11 +147,7 @@ function ExportDialog({ onBack }: ExportDialogProps) {
 
         <Space>
           <Button onClick={onBack}>返回</Button>
-          <Button 
-            type="primary" 
-            onClick={downloadSrt}
-            loading={isExporting}
-          >
+          <Button type="primary" onClick={downloadSrt}>
             下载 SRT 文件
           </Button>
         </Space>

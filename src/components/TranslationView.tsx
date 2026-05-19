@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button, Card, Select, Typography, Space, Input, Divider, Row, Col, List, Progress } from "antd";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
-import { invoke } from "@tauri-apps/api/core";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -39,6 +38,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const { 
     originalSegments, 
     translationHistory, 
+    detectedLanguage,
     addTranslation,
     currentLeftHistoryIndex, 
     currentRightHistoryIndex,
@@ -49,7 +49,20 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const [provider, setProvider] = useState<LLMProvider>("openai");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("gpt-4o-mini");
-  const [fromLang, setFromLang] = useState("英文");
+  const [fromLang, setFromLang] = useState(() => {
+    if (!detectedLanguage) return "英文";
+    const langMap: Record<string, string> = {
+      "en": "英文",
+      "zh": "中文",
+      "ja": "日文",
+      "ko": "韩文",
+      "fr": "法文",
+      "de": "德文",
+      "es": "西班牙文",
+      "ru": "俄文",
+    };
+    return langMap[detectedLanguage] || "自动检测";
+  });
   const [toLang, setToLang] = useState("中文");
   const [selectedPrompt, setSelectedPrompt] = useState("default");
   const [isTranslating, setIsTranslating] = useState(false);
@@ -58,8 +71,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const handleTranslate = async () => {
     setIsTranslating(true);
     setProgress(0);
-
-    const mockTranslate();
+    mockTranslate();
   };
 
   const mockTranslate = async () => {
@@ -105,28 +117,6 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
     doTranslate();
   };
-
-  const actualTranslate = async () => {
-    const prompt = defaultPrompts.find(p => p.id === selectedPrompt);
-    
-    const segments = originalSegments.map(s => ({
-      index: s.index,
-      start: s.start,
-      end: s.end,
-      original_text: s.originalText,
-      translated_text: s.translatedText,
-    }));
-
-    invoke("translate_subtitle", {
-      segments,
-      provider,
-      apiKey,
-      model,
-      fromLang,
-      toLang,
-      systemPrompt: prompt?.systemPrompt || "",
-    });
-  }
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
