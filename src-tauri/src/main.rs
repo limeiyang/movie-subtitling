@@ -483,6 +483,85 @@ async fn translate_subtitle(
 }
 
 #[tauri::command]
+async fn test_api_connection(
+    provider: &str,
+    api_key: &str,
+) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+
+    let request_body = OpenAIChatRequest {
+        model: match provider {
+            "minimax" => "MiniMax-Text-01".to_string(),
+            "deepseek" => "deepseek-chat".to_string(),
+            _ => "gpt-4o-mini".to_string(),
+        },
+        messages: vec![
+            OpenAIMessage {
+                role: "system".to_string(),
+                content: "你是一个测试助手。".to_string(),
+            },
+            OpenAIMessage {
+                role: "user".to_string(),
+                content: "请回复 'OK'".to_string(),
+            },
+        ],
+        temperature: 0.0,
+    };
+
+    let response = match provider {
+        "openai" => {
+            client
+                .post("https://api.openai.com/v1/chat/completions")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request_body)
+                .send()
+                .await
+        }
+        "minimax" => {
+            client
+                .post("https://api.minimax.chat/v1/text/chatcompletion_pro")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request_body)
+                .send()
+                .await
+        }
+        _ => {
+            client
+                .post("https://api.deepseek.com/v1/chat/completions")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request_body)
+                .send()
+                .await
+        }
+    };
+
+    match response {
+        Ok(res) => {
+            if res.status().is_success() {
+                let result: Result<OpenAIChatResponse, _> = res.json().await;
+                match result {
+                    Ok(response_text) => {
+                        if let Some(content) = response_text.choices.first().map(|c| &c.message.content) {
+                            if content.contains("OK") || content.contains("ok") || content.contains("Ok") {
+                                Ok(true)
+                            } else {
+                                Ok(true)
+                            }
+                        } else {
+                            Ok(true)
+                        }
+                    }
+                    Err(_) => Ok(false),
+                }
+            } else {
+                Ok(false)
+            }
+        }
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
 async fn export_srt(
     segments: Vec<SubtitleSegment>,
     output_path: &str,

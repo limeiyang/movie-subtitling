@@ -160,27 +160,11 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
         message.success("API 连接测试成功！");
       } else {
         setApiTestResult("error");
-        message.error("API 连接测试失败");
+        message.error("API 连接测试失败，请检查 API Key 是否正确");
       }
     } catch (error) {
-      let isValid = false;
-      if (provider === "openai") {
-        isValid = apiKey.startsWith("sk-");
-      } else if (provider === "minimax") {
-        isValid = apiKey.length > 20;
-      } else if (provider === "deepseek") {
-        isValid = apiKey.startsWith("sk-");
-      } else {
-        isValid = apiKey.length > 10;
-      }
-
-      if (isValid) {
-        setApiTestResult("success");
-        message.success("API Key 格式验证通过！");
-      } else {
-        setApiTestResult("error");
-        message.error("API Key 格式不正确");
-      }
+      setApiTestResult("error");
+      message.error("API 连接测试失败，请检查网络连接或 API Key");
     } finally {
       setIsTestingApi(false);
     }
