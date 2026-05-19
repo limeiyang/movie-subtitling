@@ -9,12 +9,16 @@ use std::path::PathBuf;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SubtitleSegment {
+    #[serde(rename = "index")]
     pub index: u32,
+    #[serde(rename = "start")]
     pub start: f64,
+    #[serde(rename = "end")]
     pub end: f64,
+    #[serde(rename = "originalText")]
     pub original_text: String,
+    #[serde(rename = "translatedText")]
     pub translated_text: Option<String>,
 }
 
@@ -620,6 +624,100 @@ async fn test_api_connection(
 }
 
 #[tauri::command]
+async fn select_srt_file() -> Result<String, String> {
+    let file_handle = rfd::FileDialog::new()
+        .add_filter("SRT Files", &["srt"])
+        .pick_file()
+        .ok_or("No file selected".to_string())?;
+
+    Ok(file_handle.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn select_save_path(default_path: &str, filter_name: &str, filter_ext: &str) -> Result<String, String> {
+    let mut dialog = rfd::FileDialog::new()
+        .add_filter(filter_name, &[filter_ext]);
+    
+    if !default_path.is_empty() {
+        let default_path_buf = PathBuf::from(default_path);
+        if let Some(parent) = default_path_buf.parent() {
+            dialog = dialog.set_directory(parent);
+        }
+        if let Some(file_name) = default_path_buf.file_name() {
+            dialog = dialog.set_file_name(file_name);
+        }
+    }
+    
+    let file_handle = dialog
+        .save_file()
+        .ok_or("No file selected".to_string())?;
+
+    Ok(file_handle.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn parse_srt_file(file_path: &str) -> Result<Vec<SubtitleSegment>, String> {
+    let content = fs::read_to_string(file_path)
+        .map_err(|e| format!("Failed to read SRT file: {}", e))?;
+
+    let mut segments = Vec::new();
+    let mut lines = content.lines().peekable();
+    
+    while let Some(line) = lines.next() {
+        if let Ok(index) = line.trim().parse::<u32>() {
+            if let Some(time_line) = lines.next() {
+                let time_parts: Vec<&str> = time_line.split("-->").collect();
+                if time_parts.len() == 2 {
+                    let parse_time = |time_str: &str| -> Result<f64, String> {
+                        let parts: Vec<&str> = time_str.trim().split(',').collect();
+                        if parts.len() != 2 {
+                            return Err("Invalid time format".to_string());
+                        }
+                        let time_part = parts[0];
+                        let millis: f64 = parts[1].parse().map_err(|_| "Invalid milliseconds".to_string())?;
+                        
+                        let time_components: Vec<&str> = time_part.split(':').collect();
+                        if time_components.len() != 3 {
+                            return Err("Invalid time format".to_string());
+                        }
+                        
+                        let hours: f64 = time_components[0].parse().map_err(|_| "Invalid hours".to_string())?;
+                        let minutes: f64 = time_components[1].parse().map_err(|_| "Invalid minutes".to_string())?;
+                        let seconds: f64 = time_components[2].parse().map_err(|_| "Invalid seconds".to_string())?;
+                        
+                        Ok(hours * 3600.0 + minutes * 60.0 + seconds + millis / 1000.0)
+                    };
+                    
+                    let start = parse_time(time_parts[0])?;
+                    let end = parse_time(time_parts[1])?;
+                    
+                    let mut text = String::new();
+                    while let Some(next_line) = lines.peek() {
+                        if next_line.trim().is_empty() || next_line.trim().parse::<u32>().is_ok() {
+                            break;
+                        }
+                        if !text.is_empty() {
+                            text.push('\n');
+                        }
+                        text.push_str(lines.next().unwrap());
+                    }
+                    
+                    segments.push(SubtitleSegment {
+                        index,
+                        start,
+                        end,
+                        original_text: text.trim().to_string(),
+                        translated_text: None,
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(segments)
+}
+
+#[tauri::command]
 async fn export_srt(
     segments: Vec<SubtitleSegment>,
     output_path: &str,
@@ -692,6 +790,9 @@ fn main() {
             translate_subtitle,
             test_api_connection,
             export_srt,
+            select_srt_file,
+            parse_srt_file,
+            select_save_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

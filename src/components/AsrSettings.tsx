@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button, Card, Radio, Select, Typography, Space, Input, Divider, Alert, Modal, Tag, Progress, message } from "antd";
-import { FolderOpenOutlined, DownloadOutlined, WarningOutlined, InfoCircleOutlined, PlayCircleOutlined, ClockCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, DownloadOutlined, WarningOutlined, InfoCircleOutlined, PlayCircleOutlined, ClockCircleOutlined, ThunderboltOutlined, SaveOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/useAppStore";
 
 const { Title, Text } = Typography;
@@ -14,7 +14,7 @@ interface AsrSettingsProps {
 type AsrMode = "local" | "cloud";
 
 function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
-  const { originalSegments, audioPath, whisperModelsPath, detectedLanguage, setWhisperModelsPath, setOriginalSegments, setDetectedLanguage } = useAppStore();
+  const { originalSegments, audioPath, whisperModelsPath, detectedLanguage, videoPath, setWhisperModelsPath, setOriginalSegments, setDetectedLanguage } = useAppStore();
   
   const loadSettings = () => {
     const savedMode = localStorage.getItem("asr_mode") as AsrMode || "local";
@@ -349,6 +349,52 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
     }
   };
 
+  const handleSaveOriginalSrt = async () => {
+    if (originalSegments.length === 0 || !isTauriAvailable) {
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      
+      let defaultPath = "";
+      if (videoPath && !videoPath.startsWith("web-mode")) {
+        const dir = videoPath.substring(0, videoPath.lastIndexOf("/"));
+        const name = videoPath.substring(videoPath.lastIndexOf("/") + 1).replace(/\.[^/.]+$/, "");
+        defaultPath = dir + "/" + name + "_original.srt";
+      }
+
+      const savePath = await invoke<string>("select_save_path", {
+        defaultPath,
+        filterName: "SRT Files",
+        filterExt: "srt"
+      });
+
+      if (!savePath) {
+        return;
+      }
+
+      const segmentsToExport = originalSegments.map(s => ({
+        index: s.index,
+        start: s.start,
+        end: s.end,
+        originalText: s.originalText,
+        translatedText: undefined
+      }));
+
+      await invoke("export_srt", {
+        segments: segmentsToExport,
+        outputPath: savePath,
+        mode: "original"
+      });
+
+      message.success("原始字幕已保存！");
+    } catch (error) {
+      console.error("Failed to save SRT:", error);
+      message.error("保存失败：" + (error as any).message);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <Card>
@@ -571,7 +617,15 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
             >
               开始转写
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              onClick={handleSaveOriginalSrt}
+              icon={<SaveOutlined />}
+              disabled={!isTauriAvailable}
+            >
+              保存原始字幕
+            </Button>
+          )}
           <Button type="primary" onClick={onNext}>
             下一步：翻译字幕
           </Button>

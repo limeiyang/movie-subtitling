@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { Button, Card, Upload, Typography, Space, message, Progress } from "antd";
-import { InboxOutlined, AudioOutlined, FontSizeOutlined } from "@ant-design/icons";
+import { InboxOutlined, AudioOutlined, FontSizeOutlined, FileTextOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/useAppStore";
 
 const { Dragger } = Upload;
@@ -11,7 +11,7 @@ interface FileSelectProps {
 }
 
 function FileSelect({ onNext }: FileSelectProps) {
-  const { videoFile, videoPath, setVideoFile, setAudioPath } = useAppStore();
+  const { videoFile, videoPath, setVideoFile, setAudioPath, setOriginalSegments, setDetectedLanguage } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -120,6 +120,42 @@ function FileSelect({ onNext }: FileSelectProps) {
     }
   };
 
+  const handleSelectSrtFile = async () => {
+    if (!isTauriAvailable) {
+      message.warning("此功能需要桌面应用模式");
+      return;
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const srtPath = await invoke<string>("select_srt_file");
+      
+      const segments = await invoke<Array<{
+        index: number;
+        start: number;
+        end: number;
+        originalText: string;
+        translatedText?: string;
+      }>>("parse_srt_file", { file_path: srtPath });
+
+      const formattedSegments = segments.map((s, idx) => ({
+        index: idx,
+        start: s.start,
+        end: s.end,
+        originalText: s.originalText || "",
+        translatedText: s.translatedText,
+      }));
+
+      setOriginalSegments(formattedSegments);
+      setDetectedLanguage("auto");
+      message.success(`成功导入 ${formattedSegments.length} 条字幕！`);
+      onNext();
+    } catch (error) {
+      console.error("Failed to load SRT file:", error);
+      message.error("导入 SRT 文件失败：" + (error as any).message);
+    }
+  };
+
   const props = {
     name: "file",
     multiple: false,
@@ -153,9 +189,18 @@ function FileSelect({ onNext }: FileSelectProps) {
               size="large" 
               icon={<InboxOutlined />}
               onClick={handleSelectFile}
-              style={{ marginBottom: 24, width: "100%", height: 60 }}
+              style={{ marginBottom: 12, width: "100%", height: 60 }}
             >
               选择视频文件
+            </Button>
+
+            <Button 
+              size="large" 
+              icon={<FileTextOutlined />}
+              onClick={handleSelectSrtFile}
+              style={{ marginBottom: 24, width: "100%", height: 60 }}
+            >
+              直接导入 SRT 文件（跳过语音转写）
             </Button>
 
             <Dragger {...props} style={{ marginBottom: 24 }}>
