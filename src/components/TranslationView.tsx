@@ -186,19 +186,40 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     setIsTranslating(true);
     setProgress(0);
 
+    const totalSegments = originalSegments.length;
+    const batchSize = 50;
+    const totalBatches = Math.ceil(totalSegments / batchSize);
+    let currentBatch = 0;
+
+    const progressInterval = setInterval(() => {
+      currentBatch += 1;
+      const newProgress = Math.min(95, (currentBatch / totalBatches) * 100);
+      setProgress(newProgress);
+      console.log(`翻译进度: ${newProgress.toFixed(1)}% (批次 ${currentBatch}/${totalBatches})`);
+    }, 2000);
+
     try {
+      console.log("=== 开始翻译 ===");
+      console.log(`总字幕数: ${totalSegments}`);
+      console.log(`批次大小: ${batchSize}`);
+      console.log(`Provider: ${provider}`);
+      console.log(`Model: ${model}`);
+      
       const { invoke } = await import("@tauri-apps/api/core");
       const prompt = defaultPrompts.find(p => p.id === selectedPrompt);
       const systemPrompt = prompt?.systemPrompt || "你是一个专业的字幕翻译员。";
 
       const segments: StoreSubtitleSegment[] = await invoke("translate_subtitle", {
-        segments: originalSegments,
-        provider,
-        api_key: apiKey,
-        model,
-        from_lang: fromLang === "自动检测" ? "English" : fromLang,
-        to_lang: toLang,
-        system_prompt: systemPrompt
+        segments: originalSegments.map(s => ({
+          ...s,
+          translatedText: s.translatedText || null
+        })),
+        provider: provider,
+        apikey: apiKey,
+        model: model,
+        fromLang: fromLang === "自动检测" ? "English" : fromLang,
+        toLang: toLang,
+        systemPrompt: systemPrompt
       });
 
       addTranslation({
@@ -210,11 +231,13 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       });
 
       setProgress(100);
+      console.log("=== 翻译完成 ===");
       message.success("翻译完成！");
     } catch (error) {
       console.error("Translation error:", error);
       message.error("翻译失败，请检查 API Key 和网络连接");
     } finally {
+      clearInterval(progressInterval);
       setIsTranslating(false);
     }
   };

@@ -118,7 +118,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       if (!audioPath || !isTauriAvailable) return;
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const duration = await invoke<number>("get_audio_duration", { audioPath });
+        const duration = await invoke<number>("get_audio_duration", { audio_path: audioPath });
         setAudioDuration(duration);
         
         const { speed, numRuns } = calculateAverageSpeed();
@@ -203,7 +203,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const status = await invoke<Record<string, string>>("check_model_files", {
-        modelsPath: whisperModelsPath,
+        models_path: whisperModelsPath,
         models: []
       });
       
@@ -301,17 +301,17 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
           index: number;
           start: number;
           end: number;
-          original_text: string;
-          translated_text: string | null;
+          originalText: string;
+          translatedText: string | null;
         }>;
         detected_language: string;
         processing_duration: number;
       }>("transcribe_audio", {
-        audioPath: audioPath,
+        audio_path: audioPath,
         model: selectedModelFile,
-        modelsPath: mode === "local" ? whisperModelsPath : null,
-        useCloud: mode === "cloud",
-        apiKey: mode === "cloud" ? apiKey : null
+        models_path: mode === "local" ? whisperModelsPath : null,
+        use_cloud: mode === "cloud",
+        api_key: mode === "cloud" ? apiKey : null
       });
 
       // 基于时间的进度条，前15%是初始化阶段，后85%是转写阶段
@@ -335,8 +335,8 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
         index: idx,
         start: s.start,
         end: s.end,
-        originalText: s.original_text,
-        translatedText: s.translated_text || undefined,
+        originalText: s.originalText,
+        translatedText: s.translatedText || undefined,
       }));
 
       setOriginalSegments(formattedSegments);
@@ -357,8 +357,14 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
           const fullPath = subtitleSavePath + "/" + defaultFileName;
           
           await invoke("export_srt", {
-            segments: formattedSegments,
-            outputPath: fullPath,
+            segments: formattedSegments.map(s => ({
+              index: s.index,
+              start: s.start,
+              end: s.end,
+              originalText: s.originalText,
+              translatedText: s.translatedText || null
+            })),
+            output_path: fullPath,
             mode: "original"
           });
           
@@ -404,9 +410,9 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       }
 
       const savePath = await invoke<string>("select_save_path", {
-        defaultPath,
-        filterName: "SRT Files",
-        filterExt: "srt"
+        default_path: defaultPath,
+        filter_name: "SRT Files",
+        filter_ext: "srt"
       });
 
       if (!savePath) {
@@ -418,12 +424,12 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
         start: s.start,
         end: s.end,
         originalText: s.originalText,
-        translatedText: undefined
+        translatedText: s.translatedText || null
       }));
 
       await invoke("export_srt", {
         segments: segmentsToExport,
-        outputPath: savePath,
+        output_path: savePath,
         mode: "original"
       });
 

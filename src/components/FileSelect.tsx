@@ -119,7 +119,7 @@ function FileSelect({ onNext }: FileSelectProps) {
         
         // 提取音频（只提取，不转写）
         const audioPathResult = await invoke<string>("extract_audio", {
-          videoPath
+          video_path: videoPath
         });
         setAudioPath(audioPathResult);
         setProgress(100);
@@ -164,7 +164,7 @@ function FileSelect({ onNext }: FileSelectProps) {
         end: number;
         originalText: string;
         translatedText?: string;
-      }>>("parse_srt_file", { file_path: srtPath });
+      }>>("parse_srt_file", { filePath: srtPath });
 
       const formattedSegments = segments.map((s, idx) => ({
         index: idx,

@@ -9,16 +9,12 @@ use std::path::PathBuf;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubtitleSegment {
-    #[serde(rename = "index")]
     pub index: u32,
-    #[serde(rename = "start")]
     pub start: f64,
-    #[serde(rename = "end")]
     pub end: f64,
-    #[serde(rename = "originalText")]
     pub original_text: String,
-    #[serde(rename = "translatedText")]
     pub translated_text: Option<String>,
 }
 
@@ -352,20 +348,35 @@ struct OpenAIChoice {
 async fn translate_subtitle(
     segments: Vec<SubtitleSegment>,
     provider: &str,
-    api_key: &str,
+    apikey: &str,
     model: &str,
-    from_lang: &str,
-    to_lang: &str,
-    system_prompt: &str,
+    fromLang: &str,
+    toLang: &str,
+    systemPrompt: &str,
 ) -> Result<Vec<SubtitleSegment>, String> {
     let client = reqwest::Client::new();
     let mut translated_segments = Vec::new();
     let batch_size = 50;
     let context_size = 10;
+    let total_segments = segments.len();
+    let total_batches = (total_segments + batch_size - 1) / batch_size;
+
+    println!("=== 开始翻译 ===");
+    println!("总字幕数: {}", total_segments);
+    println!("批次大小: {}", batch_size);
+    println!("总批次数: {}", total_batches);
+    println!("Provider: {}", provider);
+    println!("Model: {}", model);
+    println!("源语言: {}", fromLang);
+    println!("目标语言: {}", toLang);
 
     for (batch_idx, chunk) in segments.chunks(batch_size).enumerate() {
         let start_idx = batch_idx * batch_size;
         let end_idx = start_idx + chunk.len();
+        let progress = ((batch_idx + 1) as f64 / total_batches as f64) * 100.0;
+        
+        println!("处理批次 {}/{} (字幕 {} - {}), 进度: {:.1}%", 
+                 batch_idx + 1, total_batches, start_idx + 1, end_idx, progress);
         
         let context_start = if start_idx > context_size { start_idx - context_size } else { 0 };
         let context_end = if end_idx + context_size < segments.len() { end_idx + context_size } else { segments.len() };
@@ -397,7 +408,7 @@ async fn translate_subtitle(
 
         let user_prompt = format!(
             "请将以下{}文本翻译成{}。\n\n翻译规则：\n1. 保持原文的[数字]序号前缀和---分隔符格式\n2. 参考上下文语境给出合适的翻译结果，确保语义连贯\n3. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n4. 翻译结果保持与原文相同的行数和格式\n\n【上文参考】（用于理解语境）\n{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}",
-            from_lang, to_lang, 
+            fromLang, toLang, 
             if context_start < start_idx { &context_text[4..] } else { "" },
             target_text,
             if context_end > end_idx { &following_context[4..] } else { "" }
@@ -408,7 +419,7 @@ async fn translate_subtitle(
             messages: vec![
                 OpenAIMessage {
                     role: "system".to_string(),
-                    content: system_prompt.to_string(),
+                    content: systemPrompt.to_string(),
                 },
                 OpenAIMessage {
                     role: "user".to_string(),
@@ -418,40 +429,37 @@ async fn translate_subtitle(
             temperature: 0.3,
         };
 
-        let response = match provider {
-            "openai" => {
-                client
-                    .post("https://api.openai.com/v1/chat/completions")
-                    .header("Authorization", format!("Bearer {}", api_key))
-                    .json(&request_body)
-                    .send()
-                    .await
-                    .map_err(|e| format!("API request failed: {}", e))?
-            }
-            "minimax" => {
-                client
-                    .post("https://api.minimaxi.com/v1/chat/completions")
-                    .header("Authorization", format!("Bearer {}", api_key))
-                    .json(&request_body)
-                    .send()
-                    .await
-                    .map_err(|e| format!("API request failed: {}", e))?
-            }
-            _ => {
-                client
-                    .post("https://api.deepseek.com/v1/chat/completions")
-                    .header("Authorization", format!("Bearer {}", api_key))
-                    .json(&request_body)
-                    .send()
-                    .await
-                    .map_err(|e| format!("API request failed: {}", e))?
-            }
+        let url = match provider {
+            "openai" => "https://api.openai.com/v1/chat/completions",
+            "minimax" => "https://api.minimaxi.com/v1/chat/completions",
+            _ => "https://api.deepseek.com/v1/chat/completions",
         };
+        
+        println!("调用 API: {}", url);
+        println!("请求消息数: {}, 总tokens预估: ~{}", request_body.messages.len(), user_prompt.len() / 4);
+        
+        let response_start = std::time::Instant::now();
+        let response = client
+            .post(url)
+            .header("Authorization", format!("Bearer {}", apikey))
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| {
+                println!("API请求失败: {}", e);
+                format!("API request failed: {}", e)
+            })?;
+        
+        let response_time = response_start.elapsed().as_millis();
+        println!("API响应时间: {}ms, 状态码: {}", response_time, response.status());
 
         let response_text: OpenAIChatResponse = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse API response: {}", e))?;
+            .map_err(|e| {
+                println!("解析响应失败: {}", e);
+                format!("Failed to parse API response: {}", e)
+            })?;
 
         let translated_text = response_text
             .choices
@@ -459,7 +467,10 @@ async fn translate_subtitle(
             .and_then(|c| Some(c.message.content.clone()))
             .unwrap_or_default();
 
+        println!("翻译结果长度: {} 字符", translated_text.len());
+
         let translations: Vec<&str> = translated_text.split("---").collect();
+        println!("解析到 {} 条翻译结果", translations.len());
 
         for (i, seg) in chunk.iter().enumerate() {
             let trans = translations.get(i).unwrap_or(&"").trim();
@@ -484,6 +495,9 @@ async fn translate_subtitle(
         }
     }
 
+    println!("=== 翻译完成 ===");
+    println!("成功翻译 {} 条字幕", translated_segments.len());
+    
     Ok(translated_segments)
 }
 
@@ -665,8 +679,8 @@ async fn select_save_folder() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn parse_srt_file(file_path: &str) -> Result<Vec<SubtitleSegment>, String> {
-    let content = fs::read_to_string(file_path)
+async fn parse_srt_file(filePath: &str) -> Result<Vec<SubtitleSegment>, String> {
+    let content = fs::read_to_string(filePath)
         .map_err(|e| format!("Failed to read SRT file: {}", e))?;
 
     let mut segments = Vec::new();
