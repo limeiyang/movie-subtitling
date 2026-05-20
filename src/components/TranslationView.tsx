@@ -189,19 +189,22 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     const totalSegments = originalSegments.length;
     const batchSize = 50;
     const totalBatches = Math.ceil(totalSegments / batchSize);
-    let currentBatch = 0;
+    const estimatedTimeSeconds = totalBatches * 5;
+    let elapsedSeconds = 0;
 
     const progressInterval = setInterval(() => {
-      currentBatch += 1;
-      const newProgress = Math.min(95, (currentBatch / totalBatches) * 100);
+      elapsedSeconds += 1;
+      const newProgress = Math.min(90, (elapsedSeconds / estimatedTimeSeconds) * 100);
       setProgress(newProgress);
-      console.log(`翻译进度: ${newProgress.toFixed(1)}% (批次 ${currentBatch}/${totalBatches})`);
-    }, 2000);
+      console.log(`翻译进行中... ${newProgress.toFixed(0)}% (已处理 ${elapsedSeconds}s)`);
+    }, 1000);
 
     try {
       console.log("=== 开始翻译 ===");
       console.log(`总字幕数: ${totalSegments}`);
       console.log(`批次大小: ${batchSize}`);
+      console.log(`总批次数: ${totalBatches}`);
+      console.log(`预估时间: ${estimatedTimeSeconds}秒`);
       console.log(`Provider: ${provider}`);
       console.log(`Model: ${model}`);
       
@@ -232,6 +235,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
       setProgress(100);
       console.log("=== 翻译完成 ===");
+      console.log(`翻译完成！共处理 ${segments.length} 条字幕`);
       message.success("翻译完成！");
     } catch (error) {
       console.error("Translation error:", error);

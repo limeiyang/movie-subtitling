@@ -414,6 +414,15 @@ async fn translate_subtitle(
             if context_end > end_idx { &following_context[4..] } else { "" }
         );
 
+        let prompt_length = user_prompt.len();
+
+        // DEBUG: 打印请求输入（在构建 request_body 之前）
+        println!("\n========== [DEBUG] 请求输入 ==========");
+        println!("批次 {}/{}", batch_idx + 1, total_batches);
+        println!("System Prompt: {}", systemPrompt);
+        println!("\nUser Prompt (前500字符):\n{}", &user_prompt[..prompt_length.min(500)]);
+        println!("=========================================\n");
+
         let request_body = OpenAIChatRequest {
             model: model.to_string(),
             messages: vec![
@@ -436,7 +445,7 @@ async fn translate_subtitle(
         };
         
         println!("调用 API: {}", url);
-        println!("请求消息数: {}, 总tokens预估: ~{}", request_body.messages.len(), user_prompt.len() / 4);
+        println!("请求消息数: 2, 总tokens预估: ~{}", prompt_length / 4);
         
         let response_start = std::time::Instant::now();
         let response = client
@@ -461,15 +470,21 @@ async fn translate_subtitle(
                 format!("Failed to parse API response: {}", e)
             })?;
 
-        let translated_text = response_text
+        // DEBUG: 打印响应输出
+        let full_response = response_text
             .choices
             .first()
-            .and_then(|c| Some(c.message.content.clone()))
+            .map(|c| c.message.content.clone())
             .unwrap_or_default();
+        
+        println!("\n========== [DEBUG] 响应输出 ==========");
+        println!("批次 {}/{}", batch_idx + 1, total_batches);
+        println!("原始响应 (前1000字符):\n{}", &full_response[..full_response.len().min(1000)]);
+        println!("=========================================\n");
 
-        println!("翻译结果长度: {} 字符", translated_text.len());
+        println!("翻译结果长度: {} 字符", full_response.len());
 
-        let translations: Vec<&str> = translated_text.split("---").collect();
+        let translations: Vec<&str> = full_response.split("---").collect();
         println!("解析到 {} 条翻译结果", translations.len());
 
         for (i, seg) in chunk.iter().enumerate() {
