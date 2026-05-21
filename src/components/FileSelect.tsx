@@ -119,7 +119,7 @@ function FileSelect({ onNext }: FileSelectProps) {
         
         // 提取音频（只提取，不转写）
         const audioPathResult = await invoke<string>("extract_audio", {
-          video_path: videoPath
+          videoPath: videoPath
         });
         setAudioPath(audioPathResult);
         setProgress(100);

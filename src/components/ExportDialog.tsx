@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, Typography, Space, Radio, Divider, Alert } from "antd";
+import { Button, Card, Typography, Space, Radio, Divider, Alert, message } from "antd";
 import { useAppStore, SubtitleSegment as StoreSubtitleSegment } from "../store/useAppStore";
 
 const { Title, Text } = Typography;
@@ -60,20 +60,43 @@ function ExportDialog({ onBack }: ExportDialogProps) {
     return content;
   };
 
-  const downloadSrt = () => {
+  const downloadSrt = async () => {
     const segments = getSelectedSegments();
     const content = generateSrtContent(segments, mode);
 
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `subtitle_${Date.now()}.srt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setExported(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      
+      const defaultPath = `subtitle_${Date.now()}.srt`;
+      
+      const savePath = await invoke<string>("select_save_path", {
+        defaultPath: defaultPath,
+        filterName: "SRT Files",
+        filterExt: "srt"
+      });
+
+      if (!savePath) {
+        return;
+      }
+
+      await invoke("export_srt", {
+        segments: segments.map(s => ({
+          index: s.index,
+          start: s.start,
+          end: s.end,
+          originalText: s.originalText,
+          translatedText: s.translatedText || null
+        })),
+        outputPath: savePath,
+        mode: mode
+      });
+
+      setExported(true);
+      message.success(`字幕已导出到：${savePath}`);
+    } catch (error) {
+      console.error("Export failed:", error);
+      message.error("导出失败：" + (error as any).message);
+    }
   };
 
   const segments = getSelectedSegments();

@@ -118,7 +118,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       if (!audioPath || !isTauriAvailable) return;
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const duration = await invoke<number>("get_audio_duration", { audio_path: audioPath });
+        const duration = await invoke<number>("get_audio_duration", { audioPath: audioPath });
         setAudioDuration(duration);
         
         const { speed, numRuns } = calculateAverageSpeed();
@@ -203,7 +203,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const status = await invoke<Record<string, string>>("check_model_files", {
-        models_path: whisperModelsPath,
+        modelsPath: whisperModelsPath,
         models: []
       });
       
@@ -307,11 +307,11 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
         detected_language: string;
         processing_duration: number;
       }>("transcribe_audio", {
-        audio_path: audioPath,
+        audioPath: audioPath,
         model: selectedModelFile,
-        models_path: mode === "local" ? whisperModelsPath : null,
-        use_cloud: mode === "cloud",
-        api_key: mode === "cloud" ? apiKey : null
+        modelsPath: mode === "local" ? whisperModelsPath : null,
+        useCloud: mode === "cloud",
+        apiKey: mode === "cloud" ? apiKey : null
       });
 
       // 基于时间的进度条，前15%是初始化阶段，后85%是转写阶段
@@ -364,7 +364,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
               originalText: s.originalText,
               translatedText: s.translatedText || null
             })),
-            output_path: fullPath,
+            outputPath: fullPath,
             mode: "original"
           });
           
@@ -410,9 +410,9 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       }
 
       const savePath = await invoke<string>("select_save_path", {
-        default_path: defaultPath,
-        filter_name: "SRT Files",
-        filter_ext: "srt"
+        defaultPath: defaultPath,
+        filterName: "SRT Files",
+        filterExt: "srt"
       });
 
       if (!savePath) {
@@ -429,7 +429,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
 
       await invoke("export_srt", {
         segments: segmentsToExport,
-        output_path: savePath,
+        outputPath: savePath,
         mode: "original"
       });
 

@@ -24,7 +24,7 @@ const defaultPrompts: PromptTemplate[] = [
   {
     id: "default",
     name: "默认字幕翻译",
-    systemPrompt: "你是一个专业的字幕翻译员。翻译时保持简洁，符合字幕阅读习惯，控制句子长度，不要添加解释。",
+    systemPrompt: "你是一个专业的字幕翻译员，需要根据上下文语境进行翻译，翻译时保持简洁，符合字幕阅读习惯，控制句子长度，不要添加解释。",
     userPromptTemplate: "将以下 {from} 文本翻译为 {to}：{text}"
   },
   {
@@ -75,9 +75,11 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
   useEffect(() => {
     const saved = localStorage.getItem(CONFIG_KEY);
+    console.log("Loading config from localStorage:", saved);
     if (saved) {
       try {
         const config = JSON.parse(saved);
+        console.log("Parsed config:", config);
         if (config.provider) setProvider(config.provider as LLMProvider);
         if (config.apiKey) setApiKey(config.apiKey);
         if (config.model) setModel(config.model);
@@ -93,12 +95,13 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const saveConfig = () => {
     const config = {
       provider,
-      apiKey: apiKey ? "***" : "",
+      apiKey: apiKey,
       model,
       fromLang,
       toLang,
       selectedPrompt
     };
+    console.log("Saving config to localStorage:", config);
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
   };
 
@@ -133,6 +136,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
     setApiTestResult(null);
+    saveConfig();
   };
 
   const handleLangChange = () => {
@@ -177,6 +181,11 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
     }
   };
 
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [liveTranslations, setLiveTranslations] = useState<Record<number, string>>({});
+
   const handleTranslate = async () => {
     if (!apiKey) {
       message.warning("请先输入 API Key");
@@ -185,32 +194,51 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
 
     setIsTranslating(true);
     setProgress(0);
+    setCurrentBatch(0);
+    setCurrentSegmentIndex(0);
+    setLiveTranslations({});
 
     const totalSegments = originalSegments.length;
-    const batchSize = 50;
-    const totalBatches = Math.ceil(totalSegments / batchSize);
-    const estimatedTimeSeconds = totalBatches * 5;
-    let elapsedSeconds = 0;
-
-    const progressInterval = setInterval(() => {
-      elapsedSeconds += 1;
-      const newProgress = Math.min(90, (elapsedSeconds / estimatedTimeSeconds) * 100);
-      setProgress(newProgress);
-      console.log(`翻译进行中... ${newProgress.toFixed(0)}% (已处理 ${elapsedSeconds}s)`);
-    }, 1000);
+    const batchSize = 25;
+    const calculatedTotalBatches = Math.ceil(totalSegments / batchSize);
+    setTotalBatches(calculatedTotalBatches);
 
     try {
       console.log("=== 开始翻译 ===");
       console.log(`总字幕数: ${totalSegments}`);
       console.log(`批次大小: ${batchSize}`);
-      console.log(`总批次数: ${totalBatches}`);
-      console.log(`预估时间: ${estimatedTimeSeconds}秒`);
+      console.log(`总批次数: ${calculatedTotalBatches}`);
       console.log(`Provider: ${provider}`);
       console.log(`Model: ${model}`);
       
       const { invoke } = await import("@tauri-apps/api/core");
+      const { listen } = await import("@tauri-apps/api/event");
+      
+      const unlisten = await listen<{
+        batchIndex: number;
+        totalBatches: number;
+        progress: number;
+        message: string;
+        segmentIndex?: number;
+        text?: string;
+      }>("translation-progress", (event) => {
+        const { batchIndex, totalBatches, progress, message, segmentIndex, text } = event.payload;
+        setCurrentBatch(batchIndex);
+        setTotalBatches(totalBatches);
+        setProgress(progress);
+        console.log(`[进度更新] ${message} - ${progress.toFixed(1)}%`);
+        
+        if (segmentIndex !== undefined && text !== undefined) {
+          setCurrentSegmentIndex(segmentIndex);
+          setLiveTranslations(prev => ({
+            ...prev,
+            [segmentIndex]: text
+          }));
+        }
+      });
+      
       const prompt = defaultPrompts.find(p => p.id === selectedPrompt);
-      const systemPrompt = prompt?.systemPrompt || "你是一个专业的字幕翻译员。";
+      const systemPrompt = prompt?.systemPrompt || "你。";
 
       const segments: StoreSubtitleSegment[] = await invoke("translate_subtitle", {
         segments: originalSegments.map(s => ({
@@ -225,6 +253,8 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
         systemPrompt: systemPrompt
       });
 
+      unlisten();
+
       addTranslation({
         id: Date.now().toString(),
         promptId: selectedPrompt,
@@ -234,6 +264,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       });
 
       setProgress(100);
+      setCurrentBatch(calculatedTotalBatches);
       console.log("=== 翻译完成 ===");
       console.log(`翻译完成！共处理 ${segments.length} 条字幕`);
       message.success("翻译完成！");
@@ -241,7 +272,6 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       console.error("Translation error:", error);
       message.error("翻译失败，请检查 API Key 和网络连接");
     } finally {
-      clearInterval(progressInterval);
       setIsTranslating(false);
     }
   };
@@ -359,7 +389,10 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
           {isTranslating && (
             <div style={{ marginTop: 16 }}>
               <Progress percent={Math.round(progress)} status="active" />
-              <Text type="secondary">正在翻译，请稍候...</Text>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Text type="secondary">正在翻译，请稍候...</Text>
+                <Text type="primary">批次 {currentBatch}/{totalBatches}</Text>
+              </div>
             </div>
           )}
 
@@ -415,17 +448,41 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
           </Row>
           <Divider style={{ margin: "8px 0" }} />
           <div style={{ maxHeight: 400, overflow: "auto" }}>
-            {left.map((segment, index) => (
-              <Row key={index} gutter={16} style={{ marginBottom: 8, padding: "4px 0", borderBottom: "1px solid #f0f0f0" }}>
-                <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{formatTime(segment.start)} → {formatTime(segment.end)}</Text>
-                  <div>{segment.originalText}</div>
-                </Col>
-                <Col span={12}>
-                  <div style={{ color: "#1890ff" }}>{right ? right[index]?.translatedText || segment.originalText : segment.originalText}</div>
-                </Col>
-              </Row>
-            ))}
+            {left.map((segment, index) => {
+              const liveTranslation = liveTranslations[index];
+              const isBeingTranslated = isTranslating && index === currentSegmentIndex;
+              
+              return (
+                <Row 
+                  key={index} 
+                  gutter={16} 
+                  style={{ 
+                    marginBottom: 8, 
+                    padding: "4px 0", 
+                    borderBottom: "1px solid #f0f0f0",
+                    backgroundColor: isBeingTranslated ? "#e6f7ff" : "transparent"
+                  }}
+                >
+                  <Col span={12}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{formatTime(segment.start)} → {formatTime(segment.end)}</Text>
+                    <div>{segment.originalText}</div>
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ color: "#1890ff" }}>
+                      {isBeingTranslated && !liveTranslation && (
+                        <span style={{ color: "#1890ff" }}>翻译中...</span>
+                      )}
+                      {liveTranslation && (
+                        <span style={{ color: "#52c41a" }}>{liveTranslation}</span>
+                      )}
+                      {!isBeingTranslated && !liveTranslation && (
+                        <span>{right ? right[index]?.translatedText || segment.originalText : segment.originalText}</span>
+                      )}
+                    </div>
+                  </Col>
+                </Row>
+              );
+            })}
           </div>
         </Card>
       </Card>
