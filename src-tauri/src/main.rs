@@ -793,6 +793,53 @@ async fn select_folder() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn select_models_directory() -> Result<String, String> {
+    let path = rfd::FileDialog::new().pick_folder();
+
+    match path {
+        Some(p) => Ok(p.to_str().unwrap_or("").to_string()),
+        None => Ok("".to_string()),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn check_model_files(modelsPath: &str, _models: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
+    use std::collections::HashMap;
+    
+    let mut status = HashMap::new();
+    let path = std::path::PathBuf::from(modelsPath);
+    
+    if !path.exists() {
+        status.insert("_error".to_string(), "Models path does not exist".to_string());
+        return Ok(status);
+    }
+    
+    let mut has_safetensors = false;
+    
+    if let Ok(entries) = std::fs::read_dir(&path) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy().to_string();
+            
+            if name.ends_with(".bin") || name.ends_with(".ggml") {
+                status.insert(name.clone(), entry.path().to_string_lossy().to_string());
+            }
+            
+            if name.ends_with(".safetensors") {
+                has_safetensors = true;
+            }
+        }
+    }
+    
+    if has_safetensors {
+        status.insert("_safetensors_detected".to_string(), "true".to_string());
+    }
+    
+    Ok(status)
+}
+
+#[tauri::command]
 async fn select_srt_file() -> Result<String, String> {
     let file = rfd::FileDialog::new()
         .add_filter("SRT Files", &["srt"])
@@ -1072,6 +1119,8 @@ fn main() {
             export_srt,
             select_save_path,
             select_folder,
+            select_models_directory,
+            check_model_files,
             select_srt_file,
             select_video_file,
             extract_audio,

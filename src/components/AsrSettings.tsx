@@ -196,7 +196,7 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
   }, [whisperModelsPath]);
 
   const checkModelFiles = async () => {
-    if (!whisperModelsPath) return;
+    if (!whisperModelsPath || !isTauriAvailable) return;
     
     setIsChecking(true);
     
