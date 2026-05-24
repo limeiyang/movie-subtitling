@@ -62,7 +62,7 @@ function ExportDialog({ onBack }: ExportDialogProps) {
 
   const downloadSrt = async () => {
     const segments = getSelectedSegments();
-    const content = generateSrtContent(segments, mode);
+    generateSrtContent(segments, mode);
 
     try {
       const { invoke } = await import("@tauri-apps/api/core");

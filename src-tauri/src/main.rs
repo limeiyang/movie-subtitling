@@ -214,6 +214,7 @@ async fn translate_single_batch(
     toLang: &str,
     systemPrompt: &str,
     context_size: usize,
+    enable_asr_correction: bool, // 新增：是否启用ASR纠错+翻译一体化
 ) -> Result<Vec<SubtitleSegment>, String> {
     let start_idx = batch_idx * batch_size;
     let end_idx = start_idx + chunk.len();
@@ -258,15 +259,30 @@ async fn translate_single_batch(
         translations: translation_items,
     }).unwrap();
 
-    let user_prompt = format!(
-        "请将以下{}文本翻译成{}。\n\n翻译规则：\n1. 严格以JSON格式返回翻译结果，格式与输入完全相同\n2. 只修改text字段为翻译结果，保持index字段不变\n3. 给出的原始字幕可能是语音转换的文字，可能存在一些识别错误，请参考上下文语境给出合适的翻译结果，确保语义连贯\n4. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n5. 确保返回的是纯JSON，不要有任何额外的文字说明\n\n返回格式示例：\n{{\n  \"translations\": [\n    {{\n      \"index\": 0,\n      \"text\": \"翻译结果\"\n    }}\n  ]\n}}\n\n【上文参考】（用于理解语境）\n{}{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}{}",
-        fromLang, toLang, 
-        if !context_text.is_empty() { "【上文参考】\n" } else { "" },
-        context_text,
-        input_json,
-        if !following_context.is_empty() { "【下文参考】\n" } else { "" },
-        following_context
-    );
+    // 根据是否启用ASR纠错，使用不同的Prompt
+    let user_prompt = if enable_asr_correction {
+        // 纠错+翻译一体化模式
+        format!(
+            "请将以下{}文本翻译成{}。\n\n重要提示：给出的原始字幕可能是语音识别(ASR)转换的文字，可能存在识别错误，请先修正可能的ASR错误再翻译。\n\n常见ASR错误模式参考：\n- 同僧 → 同級生（どうきょうせい）\n- 頭得のに → 頭いいのに（あたまいいのに）\n- コンク → 混乱（こんらん）\n- 相付け → 相棒（あいぼう）\n- ありまえん → ありません\n- 若さ → 若狭（わかさ）[如果上下文提到学校、水産高校、廃校等地名相关]\n- ロシー → ロシア\n- 響く → 組（くみ）[如果上下文提到枚，如2枚1組]\n- ちょーてんちょー → 超天才超天才\n- いいん顔 → いい顔\n\n翻译规则：\n1. 严格以JSON格式返回翻译结果，格式与输入完全相同\n2. 只修改text字段为翻译结果，保持index字段不变\n3. 先根据上下文修正ASR识别错误，再进行翻译\n4. 确保翻译语义连贯、自然\n5. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n6. 确保返回的是纯JSON，不要有任何额外的文字说明\n\n返回格式示例：\n{{\n  \"translations\": [\n    {{\n      \"index\": 0,\n      \"text\": \"翻译结果\"\n    }}\n  ]\n}}\n\n【上文参考】（用于理解语境）\n{}{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}{}",
+            fromLang, toLang, 
+            if !context_text.is_empty() { "【上文参考】\n" } else { "" },
+            context_text,
+            input_json,
+            if !following_context.is_empty() { "【下文参考】\n" } else { "" },
+            following_context
+        )
+    } else {
+        // 普通翻译模式
+        format!(
+            "请将以下{}文本翻译成{}。\n\n翻译规则：\n1. 严格以JSON格式返回翻译结果，格式与输入完全相同\n2. 只修改text字段为翻译结果，保持index字段不变\n3. 给出的原始字幕可能是语音转换的文字，可能存在一些识别错误，请参考上下文语境给出合适的翻译结果，确保语义连贯\n4. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n5. 确保返回的是纯JSON，不要有任何额外的文字说明\n\n返回格式示例：\n{{\n  \"translations\": [\n    {{\n      \"index\": 0,\n      \"text\": \"翻译结果\"\n    }}\n  ]\n}}\n\n【上文参考】（用于理解语境）\n{}{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}{}",
+            fromLang, toLang, 
+            if !context_text.is_empty() { "【上文参考】\n" } else { "" },
+            context_text,
+            input_json,
+            if !following_context.is_empty() { "【下文参考】\n" } else { "" },
+            following_context
+        )
+    };
 
     println!("");
     println!("========== [DEBUG] 请求输入 ==========");
@@ -283,7 +299,7 @@ async fn translate_single_batch(
             },
             OpenAIMessage {
                 role: "user".to_string(),
-                content: user_prompt,
+                content: user_prompt.clone(),
             },
         ],
         temperature: 0.3,
@@ -295,22 +311,63 @@ async fn translate_single_batch(
         _ => "https://api.deepseek.com/v1/chat/completions",
     };
 
-    let response = client
-        .post(url)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", apikey))
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+    // 智能重试逻辑：429时简单等待重试
+    let mut retry_count = 0;
+    let max_retries = 3;
+    let mut sleep_duration = 2;
+    let mut response_body = String::new();
+    let mut status_code: reqwest::StatusCode;
+    
+    loop {
+        let request_body = OpenAIChatRequest {
+            model: model.to_string(),
+            messages: vec![
+                OpenAIMessage {
+                    role: "system".to_string(),
+                    content: systemPrompt.to_string(),
+                },
+                OpenAIMessage {
+                    role: "user".to_string(),
+                    content: user_prompt.clone(),
+                },
+            ],
+            temperature: 0.3,
+        };
 
-    let status_code = response.status();
-    println!("[DEBUG] HTTP 状态码: {}", status_code);
+        let response = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", apikey))
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("请求失败: {}", e))?;
 
-    let response_body = response
-        .text()
-        .await
-        .map_err(|e| format!("读取响应失败: {}", e))?;
+        status_code = response.status();
+        println!("[DEBUG] HTTP 状态码: {}", status_code);
+        
+        // 检查是否是 429 错误
+        if status_code.as_u16() == 429 && retry_count < max_retries {
+            retry_count += 1;
+            println!("[WARN] 收到 429 Too Many Requests，等待 {} 秒后重试 ({}/{})", 
+                     sleep_duration, retry_count, max_retries);
+            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_duration)).await;
+            sleep_duration = (sleep_duration * 2).min(30); // 最长等待30秒
+            continue;
+        }
+        
+        // 非 429 或已达到最大重试次数
+        response_body = response
+            .text()
+            .await
+            .map_err(|e| format!("读取响应失败: {}", e))?;
+        break;
+    }
+
+    // 检查是否是 429 错误且已超过最大重试次数
+    if status_code.as_u16() == 429 {
+        return Err(format!("API 请求频率限制（429 Too Many Requests），已重试 {} 次均失败", max_retries));
+    }
 
     let openai_response: OpenAIResponse = serde_json::from_str(&response_body)
         .map_err(|e| format!("解析响应失败: {}", e))?;
@@ -405,19 +462,23 @@ async fn translate_subtitle(
     fromLang: &str,
     toLang: &str,
     systemPrompt: &str,
+    enableAsrCorrection: bool, // 新增：是否启用ASR纠错+翻译一体化
 ) -> Result<Vec<SubtitleSegment>, String> {
     let client = reqwest::Client::new();
     let batch_size = 25;
     let context_size = 5;
     let total_segments_count = segments.len();
     let total_batches = (total_segments_count + batch_size - 1) / batch_size;
-    let concurrency = 5;
+    let initial_concurrency = 5;
+    let mut current_concurrency = initial_concurrency;
+    
+    println!("[INFO] 启用ASR纠错一体化: {}", enableAsrCorrection);
 
     println!("[INFO] === 开始翻译 ===");
     println!("[INFO] 总字幕数: {}", total_segments_count);
     println!("[INFO] 批次大小: {}", batch_size);
     println!("[INFO] 总批次数: {}", total_batches);
-    println!("[INFO] 并发数: {}", concurrency);
+    println!("[INFO] 初始并发数: {}", initial_concurrency);
     println!("[INFO] Provider: {}", provider);
     println!("[INFO] Model: {}", model);
     println!("[INFO] 源语言: {}", fromLang);
@@ -425,11 +486,15 @@ async fn translate_subtitle(
 
     let mut all_results: Vec<(usize, Vec<SubtitleSegment>)> = Vec::with_capacity(total_batches);
     let mut completed_segments_count = 0;
+    let mut consecutive_success = 0; // 连续成功计数
+    let mut consecutive_fail = 0; // 连续失败计数
 
-    for i in (0..total_batches).step_by(concurrency) {
+    let mut batch_idx = 0;
+    while batch_idx < total_batches {
+        let actual_concurrency = current_concurrency.min(total_batches - batch_idx);
         let mut tasks = Vec::new();
         
-        for j in i..std::cmp::min(i + concurrency, total_batches) {
+        for j in batch_idx..batch_idx + actual_concurrency {
             let start_idx = j * batch_size;
             let end_idx = std::cmp::min(start_idx + batch_size, total_segments_count);
             let chunk: Vec<SubtitleSegment> = segments[start_idx..end_idx].to_vec();
@@ -443,6 +508,7 @@ async fn translate_subtitle(
             let from_lang_clone = fromLang.to_string();
             let to_lang_clone = toLang.to_string();
             let system_prompt_clone = systemPrompt.to_string();
+            let enable_asr_correction_clone = enableAsrCorrection; // 新增参数
 
             let task = tokio::spawn(async move {
                 let result = translate_single_batch(
@@ -461,6 +527,7 @@ async fn translate_subtitle(
                     &to_lang_clone,
                     &system_prompt_clone,
                     context_size,
+                    enable_asr_correction_clone, // 传递参数
                 ).await;
                 (j, result)
             });
@@ -469,11 +536,22 @@ async fn translate_subtitle(
         }
 
         let mut results = Vec::new();
+        let mut has_429_error = false;
+        
         for task in tasks {
             match task.await {
                 Ok((batch_idx, Ok(batch_segments))) => {
                     let seg_count = batch_segments.len();
                     completed_segments_count += seg_count;
+                    consecutive_success += 1;
+                    consecutive_fail = 0;
+                    
+                    // 如果连续成功，可以尝试增加并发数
+                    if consecutive_success >= 3 && current_concurrency < initial_concurrency {
+                        current_concurrency = (current_concurrency + 1).min(initial_concurrency);
+                        println!("[INFO] 连续成功，当前并发数调整为: {}", current_concurrency);
+                        consecutive_success = 0;
+                    }
                     
                     let progress = (completed_segments_count as f64 / total_segments_count as f64) * 100.0;
                     results.push((batch_idx, batch_segments));
@@ -488,7 +566,26 @@ async fn translate_subtitle(
                 }
                 Ok((_, Err(e))) => {
                     println!("[ERROR] 批次处理失败: {}", e);
-                    return Err(e);
+                    
+                    // 检查是否是 429 错误
+                    if e.contains("429") || e.contains("Too Many Requests") {
+                        has_429_error = true;
+                        consecutive_fail += 1;
+                        consecutive_success = 0;
+                        
+                        // 减少并发数
+                        if current_concurrency > 1 {
+                            current_concurrency = (current_concurrency / 2).max(1);
+                            println!("[WARN] 收到 429 错误，当前并发数调整为: {}", current_concurrency);
+                        }
+                        
+                        // 等待一段时间后继续下一个批次
+                        let sleep_time = (consecutive_fail * 2).min(10);
+                        println!("[WARN] 等待 {} 秒后继续...", sleep_time);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(sleep_time)).await;
+                    } else {
+                        return Err(e);
+                    }
                 }
                 Err(e) => {
                     println!("[ERROR] 任务执行失败: {}", e);
@@ -496,6 +593,8 @@ async fn translate_subtitle(
                 }
             }
         }
+        
+        batch_idx += actual_concurrency;
         all_results.extend(results);
     }
 
@@ -649,6 +748,450 @@ async fn test_api_connection(
     };
 
     Ok(result)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CorrectionBatch {
+    corrections: Vec<CorrectionItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CorrectionItem {
+    index: usize,
+    original: String,
+    corrected: String,
+    changes: Vec<ChangeInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChangeInfo {
+    error: String,
+    correct: String,
+    reason: String,
+}
+
+async fn correct_single_batch(
+    app: tauri::AppHandle,
+    client: reqwest::Client,
+    segments: &Vec<SubtitleSegment>,
+    chunk: &[SubtitleSegment],
+    batch_idx: usize,
+    batch_size: usize,
+    total_batches: usize,
+    total_segments_count: usize,
+    provider: &str,
+    apikey: &str,
+    model: &str,
+    context_size: usize,
+) -> Result<Vec<SubtitleSegment>, String> {
+    let start_idx = batch_idx * batch_size;
+    let end_idx = start_idx + chunk.len();
+    let progress = ((batch_idx + 1) as f64 / total_batches as f64) * 100.0;
+    
+    let _ = app.emit("correction-progress", serde_json::json!({
+        "batchIndex": batch_idx + 1,
+        "totalBatches": total_batches,
+        "progress": progress,
+        "message": format!("纠错批次 {}/{} (字幕 {} - {})", batch_idx + 1, total_batches, start_idx + 1, end_idx)
+    }));
+    
+    println!("[INFO] [ASR纠错] 处理批次 {}/{} (字幕 {} - {}), 进度: {:.1}%", 
+             batch_idx + 1, total_batches, start_idx + 1, end_idx, progress);
+    
+    let context_start = if start_idx > context_size { start_idx - context_size } else { 0 };
+    let context_end = if end_idx + context_size < segments.len() { end_idx + context_size } else { segments.len() };
+    
+    let mut context_text = String::new();
+    if context_start < start_idx {
+        for seg in &segments[context_start..start_idx] {
+            context_text.push_str(&format!("[{}] {}\n", seg.index, seg.original_text));
+        }
+    }
+    
+    let mut correction_items = Vec::new();
+    for seg in chunk {
+        correction_items.push(serde_json::json!({
+            "index": seg.index as usize,
+            "original": seg.original_text
+        }));
+    }
+    
+    let mut following_context = String::new();
+    if context_end > end_idx {
+        for seg in &segments[end_idx..context_end] {
+            following_context.push_str(&format!("[{}] {}\n", seg.index, seg.original_text));
+        }
+    }
+
+    let input_json = serde_json::to_string(&correction_items).unwrap();
+
+    let user_prompt = "你是一位日语语音识别纠错专家。请分析以下语音识别结果，修正可能的错误。\n\n【任务说明】\n语音识别（ASR）系统在将音频转换为文本时可能会产生错误，特别是：\n1. 同音异义词错误（如：同僧 → 同級生）\n2. 口语缩略语错误（如：ありまえん → ありません）\n3. 专有名词识别错误（如：若さ → 若狭）\n4. 语速过快导致的吞音错误\n\n【常见错误模式】\n- 同僧 → 同級生（どうきょうせい）\n- 頭得のに → 頭いいのに（あたまいいのに）\n- コンク → 混乱（こんらん）\n- 相付け → 相棒（あいぼう）\n- ありまえん → ありません\n- 若さ → 若狭（わかさ）[当上下文提到学校、水産高校、廃校等地名相关内容时]\n- ロシー → ロシア\n- 響く → 組（くみ）[当上下文提到枚时，如2枚1組]\n- ちょーてんちょー → 超天才超天才\n- いいん顔 → いい顔（脸不错）\n\n【纠错规则】\n1. 严格以JSON格式返回纠错结果\n2. 只修改corrected字段为纠错结果，保持index和original字段不变\n3. 如果没有发现错误，corrected字段应与original相同\n4. changes数组记录所有修改，如果没有修改则为空数组\n5. 只纠错【待纠错内容】部分，不要修改上下文参考部分\n6. 返回纯JSON，不要有任何额外的文字说明\n\n【返回格式示例】：\n{\"corrections\":[{\"index\":0,\"original\":\"同僧相手でも\",\"corrected\":\"同級生相手でも\",\"changes\":[{\"error\":\"同僧\",\"correct\":\"同級生\",\"reason\":\"同音异义词错误\"}]}]}\n\n【上文参考】（用于理解语境）\n".to_string() 
+        + &if !context_text.is_empty() { context_text.clone() } else { String::new() }
+        + "\n\n【待纠错内容】\n"
+        + &input_json
+        + "\n\n【下文参考】（用于理解语境）\n"
+        + &if !following_context.is_empty() { following_context.clone() } else { String::new() };
+
+    let request_body = OpenAIChatRequest {
+        model: model.to_string(),
+        messages: vec![
+            OpenAIMessage {
+                role: "system".to_string(),
+                content: "你是一个严谨的日语语音识别纠错专家。请仔细分析上下文，判断识别错误并修正。".to_string(),
+            },
+            OpenAIMessage {
+                role: "user".to_string(),
+                content: user_prompt,
+            },
+        ],
+        temperature: 0.1,
+    };
+
+    let url = match provider {
+        "openai" => "https://api.openai.com/v1/chat/completions",
+        "minimax" => "https://api.minimaxi.com/v1/chat/completions",
+        _ => "https://api.deepseek.com/v1/chat/completions",
+    };
+
+    let mut retry_count = 0;
+    let max_retries = 3;
+    let mut sleep_duration = 2;
+    let mut response_body = String::new();
+    let mut status_code: reqwest::StatusCode;
+    
+    loop {
+        let response = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", apikey))
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("请求失败: {}", e))?;
+
+        status_code = response.status();
+        println!("[DEBUG] [ASR纠错] HTTP 状态码: {}", status_code);
+        
+        if status_code.as_u16() == 429 && retry_count < max_retries {
+            retry_count += 1;
+            println!("[WARN] [ASR纠错] 收到 429 Too Many Requests，等待 {} 秒后重试 ({}/{})", sleep_duration, retry_count, max_retries);
+            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_duration)).await;
+            sleep_duration *= 2;
+            continue;
+        }
+        
+        if status_code.as_u16() == 429 {
+            return Err(format!("API 请求频率限制（429 Too Many Requests），已重试 {} 次均失败", max_retries));
+        }
+        
+        response_body = response
+            .text()
+            .await
+            .map_err(|e| format!("读取响应失败: {}", e))?;
+        break;
+    }
+
+    let openai_response: OpenAIResponse = serde_json::from_str(&response_body)
+        .map_err(|e| format!("解析响应失败: {}", e))?;
+
+    let full_response = openai_response
+        .choices
+        .first()
+        .map(|c| c.message.content.clone())
+        .unwrap_or_default();
+    
+    println!("");
+    println!("========== [DEBUG] [ASR纠错] 响应输出 ==========");
+    println!("[DEBUG] 批次 {}/{}", batch_idx + 1, total_batches);
+    println!("[DEBUG] 原始响应 (前500字符):");
+    println!("{}", full_response.chars().take(500).collect::<String>());
+    println!("=========================================");
+
+    let json_start = full_response.find('{').unwrap_or(0);
+    let json_end = match full_response.rfind('}') {
+        Some(idx) => idx + 1,
+        None => full_response.len(),
+    };
+    let json_end = json_end.min(full_response.len());
+    let json_str = &full_response[json_start..json_end];
+    
+    println!("[DEBUG] [ASR纠错] 提取的JSON: {}", json_str);
+
+    let correction_batch = match serde_json::from_str::<CorrectionBatch>(json_str) {
+        Ok(batch) => batch,
+        Err(e) => {
+            println!("[ERROR] [ASR纠错] JSON解析失败: {}", e);
+            let mut result = Vec::new();
+            for seg in chunk {
+                result.push(SubtitleSegment {
+                    index: seg.index,
+                    start: seg.start,
+                    end: seg.end,
+                    original_text: seg.original_text.clone(),
+                    translated_text: None,
+                });
+            }
+            println!("[DEBUG] [ASR纠错] 批次 {}/{} 处理完成（使用原文）", batch_idx + 1, total_batches);
+            return Ok(result);
+        }
+    };
+
+    println!("[DEBUG] [ASR纠错] 解析到 {} 条纠错结果, 本批次 {} 条字幕", correction_batch.corrections.len(), chunk.len());
+
+    let mut result = Vec::new();
+    for (i, seg) in chunk.iter().enumerate() {
+        let correction = correction_batch.corrections.get(i);
+        
+        let corrected_text = correction
+            .map(|c| c.corrected.trim().to_string())
+            .unwrap_or_else(|| seg.original_text.clone());
+        
+        let changes_info = correction
+            .map(|c| if !c.changes.is_empty() {
+                Some(format!("[纠错: {}]", c.changes.iter().map(|ch| format!("{}→{}", ch.error, ch.correct)).collect::<Vec<_>>().join(", ")))
+            } else { None })
+            .flatten();
+        
+        if let Some(ref info) = changes_info {
+            println!("[ASR纠错] 字幕 {}: {}", seg.index, info);
+        }
+        
+        let segment_global_index = start_idx + i;
+        let _ = app.emit("correction-progress", serde_json::json!({
+            "batchIndex": batch_idx + 1,
+            "totalBatches": total_batches,
+            "progress": progress,
+            "message": format!("处理字幕 {}/{}", segment_global_index + 1, total_segments_count),
+            "segmentIndex": segment_global_index,
+            "correctedText": corrected_text.clone()
+        }));
+
+        result.push(SubtitleSegment {
+            index: seg.index,
+            start: seg.start,
+            end: seg.end,
+            original_text: corrected_text,
+            translated_text: None,
+        });
+    }
+    println!("[DEBUG] [ASR纠错] 批次 {}/{} 处理完成", batch_idx + 1, total_batches);
+    
+    Ok(result)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn correct_asr(
+    app: tauri::AppHandle,
+    segments: Vec<SubtitleSegment>,
+    provider: &str,
+    apikey: &str,
+    model: &str,
+) -> Result<Vec<SubtitleSegment>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+    
+    let mut batch_size: usize = 25;
+    let mut concurrency: usize = 5;
+    let context_size = 5;
+    let total_segments_count = segments.len();
+    let total_batches_estimate = (total_segments_count + batch_size - 1) / batch_size;
+    let min_batch_size = 5;
+    let min_concurrency = 1;
+    let max_batch_size = 50;
+    let max_concurrency = 8;
+    
+    let mut recent_batch_results: Vec<bool> = Vec::new();
+    let success_recovery_threshold = 3;
+    let error_reduction_factor = 0.6;
+    let success_increase_factor = 1.2;
+    
+    let mut consecutive_errors = 0;
+    let mut current_batch_idx = 0;
+    let mut effective_total_batches = total_batches_estimate;
+    
+    println!("[INFO] === 开始ASR纠错 ===");
+    println!("[INFO] 总字幕数: {}", total_segments_count);
+    println!("[INFO] 初始批次大小: {}", batch_size);
+    println!("[INFO] 初始并发数: {}", concurrency);
+    println!("[INFO] Provider: {}", provider);
+    println!("[INFO] Model: {}", model);
+
+    let mut all_results: Vec<(usize, Vec<SubtitleSegment>)> = Vec::new();
+    let mut completed_segments_count = 0;
+
+    while current_batch_idx < effective_total_batches {
+        let actual_batch_size = std::cmp::min(batch_size, total_segments_count - current_batch_idx * batch_size);
+        if actual_batch_size == 0 {
+            break;
+        }
+        
+        effective_total_batches = (total_segments_count + batch_size - 1) / batch_size;
+        let batches_remaining = effective_total_batches - current_batch_idx;
+        let batches_to_process = std::cmp::min(concurrency, batches_remaining);
+        
+        println!("[INFO] [ASR纠错] 批次 {}/{}, 批次大小: {}, 并发数: {}", 
+                 current_batch_idx + 1, effective_total_batches, actual_batch_size, batches_to_process);
+        
+        let mut tasks = Vec::new();
+        
+        for j in 0..batches_to_process {
+            let batch_idx = current_batch_idx + j;
+            let start_idx = batch_idx * batch_size;
+            let end_idx = std::cmp::min(start_idx + batch_size, total_segments_count);
+            
+            if start_idx >= total_segments_count {
+                break;
+            }
+            
+            let chunk: Vec<SubtitleSegment> = segments[start_idx..end_idx].to_vec();
+            
+            let app_clone = app.clone();
+            let client_clone = client.clone();
+            let segments_clone = segments.clone();
+            let provider_clone = provider.to_string();
+            let apikey_clone = apikey.to_string();
+            let model_clone = model.to_string();
+
+            let task = tokio::spawn(async move {
+                let result = correct_single_batch(
+                    app_clone,
+                    client_clone,
+                    &segments_clone,
+                    &chunk,
+                    batch_idx,
+                    batch_size,
+                    effective_total_batches,
+                    total_segments_count,
+                    &provider_clone,
+                    &apikey_clone,
+                    &model_clone,
+                    context_size,
+                ).await;
+                (batch_idx, result)
+            });
+            
+            tasks.push(task);
+        }
+
+        let mut batch_success = false;
+        let mut batch_results = Vec::new();
+        let task_count = tasks.len();
+        
+        for task in tasks {
+            match task.await {
+                Ok((batch_idx, Ok(batch_segments))) => {
+                    let seg_count = batch_segments.len();
+                    completed_segments_count += seg_count;
+                    batch_success = true;
+                    
+                    let progress = (completed_segments_count as f64 / total_segments_count as f64) * 100.0;
+                    batch_results.push((batch_idx, batch_segments));
+                    let _ = app.emit("correction-progress", serde_json::json!({
+                        "batchIndex": batch_idx + 1,
+                        "totalBatches": effective_total_batches,
+                        "progress": progress,
+                        "message": format!("已完成 {}/{} 条字幕", completed_segments_count, total_segments_count)
+                    }));
+                    println!("[INFO] [ASR纠错] 批次 {} 完成, 累计完成 {}/{} 条字幕, 进度: {:.1}%", 
+                             batch_idx + 1, completed_segments_count, total_segments_count, progress);
+                }
+                Ok((_, Err(e))) => {
+                    if e.contains("429") {
+                        println!("[WARN] [ASR纠错] 批次 {} 遇到 429 限流错误", current_batch_idx + 1);
+                    } else {
+                        println!("[ERROR] [ASR纠错] 批次处理失败: {}", e);
+                    }
+                    return Err(e);
+                }
+                Err(e) => {
+                    println!("[ERROR] [ASR纠错] 任务执行失败: {}", e);
+                    return Err(format!("任务执行失败: {}", e));
+                }
+            }
+        }
+        
+        if batch_results.is_empty() && task_count > 0 {
+            all_results.extend(batch_results);
+            current_batch_idx += batches_to_process;
+            continue;
+        }
+        
+        recent_batch_results.push(batch_success);
+        if recent_batch_results.len() > 20 {
+            recent_batch_results.remove(0);
+        }
+        
+        let recent_success_rate = if !recent_batch_results.is_empty() {
+            recent_batch_results.iter().filter(|x| **x).count() as f64 / recent_batch_results.len() as f64
+        } else {
+            1.0
+        };
+        
+        if batch_success {
+            consecutive_errors = 0;
+            
+            if recent_batch_results.len() >= success_recovery_threshold {
+                let all_recent_success = recent_batch_results.iter().all(|x| *x);
+                if all_recent_success && recent_success_rate > 0.8 {
+                    let new_batch_size = std::cmp::min((batch_size as f64 * success_increase_factor) as usize, max_batch_size);
+                    let new_concurrency = std::cmp::min((concurrency as f64 * success_increase_factor) as usize, max_concurrency);
+                    
+                    if new_batch_size != batch_size || new_concurrency != concurrency {
+                        println!("[INFO] [ASR纠错] 检测到连续成功，恢复批次大小和并发数: {} -> {}, {} -> {}", 
+                                 batch_size, new_batch_size, concurrency, new_concurrency);
+                        batch_size = new_batch_size;
+                        concurrency = new_concurrency;
+                        effective_total_batches = (total_segments_count + batch_size - 1) / batch_size;
+                        recent_batch_results.clear();
+                    }
+                }
+            }
+        } else {
+            consecutive_errors += 1;
+            
+            if recent_success_rate < 0.5 || consecutive_errors >= 1 {
+                println!("[WARN] [ASR纠错] 检测到频繁限流，降低批次大小和并发数");
+                println!("[WARN] [ASR纠错] 等待 30 秒后再试...");
+                
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                
+                batch_size = std::cmp::max((batch_size as f64 * error_reduction_factor) as usize, min_batch_size);
+                concurrency = std::cmp::max((concurrency as f64 * error_reduction_factor) as usize, min_concurrency);
+                
+                println!("[INFO] [ASR纠错] 调整后的批次大小: {}, 并发数: {}", batch_size, concurrency);
+                effective_total_batches = (total_segments_count + batch_size - 1) / batch_size;
+                recent_batch_results.clear();
+                
+                continue;
+            }
+        }
+        
+        all_results.extend(batch_results);
+        current_batch_idx += batches_to_process;
+    }
+
+    all_results.sort_by_key(|(idx, _)| *idx);
+    
+    let mut final_results = Vec::new();
+    for (_, segs) in all_results {
+        final_results.extend(segs);
+    }
+
+    let _ = app.emit("correction-progress", serde_json::json!({
+        "batchIndex": effective_total_batches,
+        "totalBatches": effective_total_batches,
+        "progress": 100.0,
+        "message": "ASR纠错完成"
+    }));
+    
+    println!("[INFO] === ASR纠错完成 ===");
+    println!("[INFO] 成功处理 {} 条字幕", final_results.len());
+    println!("[INFO] 最终批次大小: {}, 最终并发数: {}", batch_size, concurrency);
+    
+    Ok(final_results)
 }
 
 #[tauri::command]
@@ -1078,7 +1621,7 @@ async fn parse_srt_file(file_path: &str) -> Result<Vec<SubtitleSegment>, String>
                         match (parse_time(parts[0]), parse_time(parts[1])) {
                             (Ok(start), Ok(end)) => {
                                 let mut text = String::new();
-                                i += 3;
+                                i += 2;
                                 while i < lines.len() && !lines[i].trim().is_empty() {
                                     if !text.is_empty() {
                                         text.push('\n');
@@ -1115,6 +1658,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             transcribe_audio,
             translate_subtitle,
+            correct_asr,
             test_api_connection,
             export_srt,
             select_save_path,

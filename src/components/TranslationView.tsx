@@ -72,6 +72,9 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const [progress, setProgress] = useState(0);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<"success" | "error" | null>(null);
+  const [enableAsrCorrection, setEnableAsrCorrection] = useState(false);
+  // const [isCorrecting, setIsCorrecting] = useState(false); // 不再需要，因为不再有单独的纠错流程
+  // const [correctionProgress, setCorrectionProgress] = useState(0); // 不再需要
 
   useEffect(() => {
     const saved = localStorage.getItem(CONFIG_KEY);
@@ -210,11 +213,12 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       console.log(`总批次数: ${calculatedTotalBatches}`);
       console.log(`Provider: ${provider}`);
       console.log(`Model: ${model}`);
+      console.log(`启用ASR纠错一体化: ${enableAsrCorrection}`);
       
       const { invoke } = await import("@tauri-apps/api/core");
       const { listen } = await import("@tauri-apps/api/event");
       
-      const unlisten = await listen<{
+      const unlistenTranslation = await listen<{
         batchIndex: number;
         totalBatches: number;
         progress: number;
@@ -226,7 +230,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
         setCurrentBatch(batchIndex);
         setTotalBatches(totalBatches);
         setProgress(progress);
-        console.log(`[进度更新] ${message} - ${progress.toFixed(1)}%`);
+        console.log(`[翻译进度] ${message} - ${progress.toFixed(1)}%`);
         
         if (segmentIndex !== undefined && text !== undefined) {
           setCurrentSegmentIndex(segmentIndex);
@@ -240,6 +244,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
       const prompt = defaultPrompts.find(p => p.id === selectedPrompt);
       const systemPrompt = prompt?.systemPrompt || "你。";
 
+      // 直接一次调用翻译，内部会根据参数决定是否启用纠错一体化
       const segments: StoreSubtitleSegment[] = await invoke("translate_subtitle", {
         segments: originalSegments.map(s => ({
           ...s,
@@ -250,10 +255,11 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
         model: model,
         fromLang: fromLang === "自动检测" ? "English" : fromLang,
         toLang: toLang,
-        systemPrompt: systemPrompt
+        systemPrompt: systemPrompt,
+        enableAsrCorrection: enableAsrCorrection // 传递是否启用纠错一体化的参数
       });
 
-      unlisten();
+      unlistenTranslation();
 
       addTranslation({
         id: Date.now().toString(),
@@ -376,7 +382,19 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
                 </Button>
               </Space>
             </Col>
-            <Col span={8}>
+            <Col span={4}>
+              <Text strong>ASR纠错：</Text>
+              <div style={{ marginTop: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={enableAsrCorrection}
+                  onChange={(e) => setEnableAsrCorrection(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                <Text type="secondary">启用语音识别纠错</Text>
+              </div>
+            </Col>
+            <Col span={4}>
               <Text strong>翻译提示词：</Text>
               <Select value={selectedPrompt} onChange={(v) => { setSelectedPrompt(v); saveConfig(); }} style={{ width: "100%", marginTop: 8 }}>
                 {defaultPrompts.map(p => (
@@ -391,7 +409,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
               <Progress percent={Math.round(progress)} status="active" />
               <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Text type="secondary">正在翻译，请稍候...</Text>
-                <Text type="primary">批次 {currentBatch}/{totalBatches}</Text>
+                <Text strong>批次 {currentBatch}/{totalBatches}</Text>
               </div>
             </div>
           )}

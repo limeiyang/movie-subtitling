@@ -158,20 +158,14 @@ function FileSelect({ onNext }: FileSelectProps) {
       const { invoke } = await import("@tauri-apps/api/core");
       const srtPath = await invoke<string>("select_srt_file");
       
-      const segments = await invoke<Array<{
-        index: number;
-        start: number;
-        end: number;
-        originalText: string;
-        translatedText?: string;
-      }>>("parse_srt_file", { filePath: srtPath });
+      const segments = await invoke<any>("parse_srt_file", { filePath: srtPath });
 
-      const formattedSegments = segments.map((s, idx) => ({
+      const formattedSegments = segments.map((s: any, idx: number) => ({
         index: idx,
         start: s.start,
         end: s.end,
-        originalText: s.originalText || "",
-        translatedText: s.translatedText,
+        originalText: s.originalText || s.original_text || "",
+        translatedText: s.translatedText || s.translated_text,
       }));
 
       setOriginalSegments(formattedSegments);
