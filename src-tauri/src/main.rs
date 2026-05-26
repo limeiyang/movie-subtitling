@@ -16,6 +16,71 @@ use subtitle::quality::QualityProcessor;
 use subtitle::rules::PostProcessConfig;
 use subtitle::timing::TimingProcessor;
 
+#[derive(Debug, Clone, Copy)]
+struct ModelConfig {
+    max_context_tokens: usize,
+}
+
+fn get_model_config(provider: &str, model: &str) -> ModelConfig {
+    let configs: HashMap<(&str, &str), ModelConfig> = HashMap::from([
+        (("openai", "gpt-4o-mini"), ModelConfig { max_context_tokens: 128000 }),
+        (("openai", "gpt-4o"), ModelConfig { max_context_tokens: 128000 }),
+        (("openai", "gpt-4-turbo"), ModelConfig { max_context_tokens: 128000 }),
+        (("minimax", "MiniMax-M2.7"), ModelConfig { max_context_tokens: 200000 }),
+        (("minimax", "MiniMax-M2.7-highspeed"), ModelConfig { max_context_tokens: 200000 }),
+        (("minimax", "MiniMax-Text-01"), ModelConfig { max_context_tokens: 4096 }),
+        (("deepseek", "deepseek-chat"), ModelConfig { max_context_tokens: 128000 }),
+        (("deepseek", "deepseek-coder"), ModelConfig { max_context_tokens: 128000 }),
+        (("custom", "custom-model"), ModelConfig { max_context_tokens: 4096 }),
+    ]);
+    
+    *configs.get(&(provider, model)).unwrap_or(&ModelConfig { max_context_tokens: 4096 })
+}
+
+fn estimate_tokens(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn calculate_dynamic_batch_size(
+    segments: &[SubtitleSegment],
+    start_idx: usize,
+    context_size: usize,
+    max_context_tokens: usize,
+) -> usize {
+    let available_input_tokens = max_context_tokens / 3;
+    
+    let context_start = if start_idx > context_size { start_idx - context_size } else { 0 };
+    
+    let mut context_chars = 0;
+    for seg in &segments[context_start..start_idx] {
+        context_chars += seg.original_text.chars().count() + 20;
+    }
+    
+    let estimated_tokens_per_segment = 50;
+    let remaining_tokens = available_input_tokens.saturating_sub(context_chars);
+    
+    if remaining_tokens <= 0 {
+        return 1;
+    }
+    
+    let mut max_segments = remaining_tokens / estimated_tokens_per_segment;
+    max_segments = max_segments.max(1).min(segments.len() - start_idx);
+    
+    let mut actual_chars = context_chars;
+    let mut actual_count = 0;
+    
+    for i in start_idx..std::cmp::min(start_idx + max_segments, segments.len()) {
+        let seg_chars = segments[i].original_text.chars().count() + 50;
+        if actual_chars + seg_chars > available_input_tokens {
+            break;
+        }
+        actual_chars += seg_chars;
+        actual_count += 1;
+    }
+    
+    std::cmp::max(1, actual_count)
+}
+
 fn create_default_pipeline() -> Pipeline {
     let config = PostProcessConfig::default();
     
@@ -214,21 +279,22 @@ async fn translate_single_batch(
     toLang: &str,
     systemPrompt: &str,
     context_size: usize,
-    enable_asr_correction: bool, // 新增：是否启用ASR纠错+翻译一体化
+    enable_asr_correction: bool,
+    max_context_tokens: usize,
 ) -> Result<Vec<SubtitleSegment>, String> {
     let start_idx = batch_idx * batch_size;
     let end_idx = start_idx + chunk.len();
-    let progress = ((batch_idx + 1) as f64 / total_batches as f64) * 100.0;
+    let progress = ((batch_idx + 1) as f64 / (total_batches.max(1)) as f64) * 100.0;
     
     let _ = app.emit("translation-progress", serde_json::json!({
         "batchIndex": batch_idx + 1,
-        "totalBatches": total_batches,
+        "totalBatches": total_batches.max(1),
         "progress": progress,
-        "message": format!("处理批次 {}/{} (字幕 {} - {})", batch_idx + 1, total_batches, start_idx + 1, end_idx)
+        "message": format!("处理批次 {}/{} (字幕 {} - {})", batch_idx + 1, total_batches.max(1), start_idx + 1, end_idx)
     }));
     
     println!("[INFO] 处理批次 {}/{} (字幕 {} - {}), 进度: {:.1}%", 
-             batch_idx + 1, total_batches, start_idx + 1, end_idx, progress);
+             batch_idx + 1, total_batches.max(1), start_idx + 1, end_idx, progress);
     
     let context_start = if start_idx > context_size { start_idx - context_size } else { 0 };
     let context_end = if end_idx + context_size < segments.len() { end_idx + context_size } else { segments.len() };
@@ -259,9 +325,7 @@ async fn translate_single_batch(
         translations: translation_items,
     }).unwrap();
 
-    // 根据是否启用ASR纠错，使用不同的Prompt
     let user_prompt = if enable_asr_correction {
-        // 纠错+翻译一体化模式
         format!(
             "请将以下{}文本翻译成{}。\n\n重要提示：给出的原始字幕可能是语音识别(ASR)转换的文字，可能存在识别错误，请先修正可能的ASR错误再翻译。\n\n常见ASR错误模式参考：\n- 同僧 → 同級生（どうきょうせい）\n- 頭得のに → 頭いいのに（あたまいいのに）\n- コンク → 混乱（こんらん）\n- 相付け → 相棒（あいぼう）\n- ありまえん → ありません\n- 若さ → 若狭（わかさ）[如果上下文提到学校、水産高校、廃校等地名相关]\n- ロシー → ロシア\n- 響く → 組（くみ）[如果上下文提到枚，如2枚1組]\n- ちょーてんちょー → 超天才超天才\n- いいん顔 → いい顔\n\n翻译规则：\n1. 严格以JSON格式返回翻译结果，格式与输入完全相同\n2. 只修改text字段为翻译结果，保持index字段不变\n3. 先根据上下文修正ASR识别错误，再进行翻译\n4. 确保翻译语义连贯、自然\n5. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n6. 确保返回的是纯JSON，不要有任何额外的文字说明\n\n返回格式示例：\n{{\n  \"translations\": [\n    {{\n      \"index\": 0,\n      \"text\": \"翻译结果\"\n    }}\n  ]\n}}\n\n【上文参考】（用于理解语境）\n{}{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}{}",
             fromLang, toLang, 
@@ -272,7 +336,6 @@ async fn translate_single_batch(
             following_context
         )
     } else {
-        // 普通翻译模式
         format!(
             "请将以下{}文本翻译成{}。\n\n翻译规则：\n1. 严格以JSON格式返回翻译结果，格式与输入完全相同\n2. 只修改text字段为翻译结果，保持index字段不变\n3. 给出的原始字幕可能是语音转换的文字，可能存在一些识别错误，请参考上下文语境给出合适的翻译结果，确保语义连贯\n4. 只翻译【待翻译内容】部分，不要翻译上下文参考部分\n5. 确保返回的是纯JSON，不要有任何额外的文字说明\n\n返回格式示例：\n{{\n  \"translations\": [\n    {{\n      \"index\": 0,\n      \"text\": \"翻译结果\"\n    }}\n  ]\n}}\n\n【上文参考】（用于理解语境）\n{}{}\n\n【待翻译内容】\n{}\n\n【下文参考】（用于理解语境）\n{}{}",
             fromLang, toLang, 
@@ -284,9 +347,25 @@ async fn translate_single_batch(
         )
     };
 
+    let system_prompt_chars = systemPrompt.chars().count();
+    let user_prompt_chars = user_prompt.chars().count();
+    let total_input_chars = system_prompt_chars + user_prompt_chars;
+    let available_input_tokens = max_context_tokens / 3;
+    
+    println!("[INFO] === 输入字数统计 ===");
+    println!("[INFO] 系统提示词: {} 字", system_prompt_chars);
+    println!("[INFO] 用户提示词: {} 字", user_prompt_chars);
+    println!("[INFO] 总输入: {} 字", total_input_chars);
+    println!("[INFO] 可用输入token: {} (max_context: {} / 3)", available_input_tokens, max_context_tokens);
+    println!("[INFO] 输入/可用比例: {:.1}%", (total_input_chars as f64 / available_input_tokens as f64) * 100.0);
+    
+    if total_input_chars > available_input_tokens {
+        println!("[WARN] 输入字数 {} 超过可用token {}，可能导致截断", total_input_chars, available_input_tokens);
+    }
+
     println!("");
     println!("========== [DEBUG] 请求输入 ==========");
-    println!("[DEBUG] 批次 {}/{}", batch_idx + 1, total_batches);
+    println!("[DEBUG] 批次 {}/{}", batch_idx + 1, total_batches.max(1));
     println!("[DEBUG] System Prompt: {}", systemPrompt);
     println!("=========================================");
 
@@ -378,9 +457,15 @@ async fn translate_single_batch(
         .map(|c| c.message.content.clone())
         .unwrap_or_default();
     
+    let response_chars = full_response.chars().count();
+    
+    println!("[INFO] === 输出字数统计 ===");
+    println!("[INFO] 返回内容: {} 字", response_chars);
+    println!("[INFO] 输入/输出字数比: {:.2}:1", total_input_chars as f64 / response_chars.max(1) as f64);
+    
     println!("");
     println!("========== [DEBUG] 响应输出 ==========");
-    println!("[DEBUG] 批次 {}/{}", batch_idx + 1, total_batches);
+    println!("[DEBUG] 批次 {}/{}", batch_idx + 1, total_batches.max(1));
     println!("[DEBUG] 原始响应 (前1000字符):");
     println!("{}", full_response.chars().take(1000).collect::<String>());
     println!("=========================================");
@@ -465,39 +550,61 @@ async fn translate_subtitle(
     enableAsrCorrection: bool, // 新增：是否启用ASR纠错+翻译一体化
 ) -> Result<Vec<SubtitleSegment>, String> {
     let client = reqwest::Client::new();
-    let batch_size = 25;
     let context_size = 5;
     let total_segments_count = segments.len();
-    let total_batches = (total_segments_count + batch_size - 1) / batch_size;
     let initial_concurrency = 5;
     let mut current_concurrency = initial_concurrency;
+    
+    let model_config = get_model_config(provider, model);
+    println!("[INFO] 模型配置 - Provider: {}, Model: {}, 最大上下文: {} tokens", 
+             provider, model, model_config.max_context_tokens);
     
     println!("[INFO] 启用ASR纠错一体化: {}", enableAsrCorrection);
 
     println!("[INFO] === 开始翻译 ===");
     println!("[INFO] 总字幕数: {}", total_segments_count);
-    println!("[INFO] 批次大小: {}", batch_size);
-    println!("[INFO] 总批次数: {}", total_batches);
     println!("[INFO] 初始并发数: {}", initial_concurrency);
     println!("[INFO] Provider: {}", provider);
     println!("[INFO] Model: {}", model);
     println!("[INFO] 源语言: {}", fromLang);
     println!("[INFO] 目标语言: {}", toLang);
 
-    let mut all_results: Vec<(usize, Vec<SubtitleSegment>)> = Vec::with_capacity(total_batches);
+    let mut all_results: Vec<(usize, usize, Vec<SubtitleSegment>)> = Vec::new();
     let mut completed_segments_count = 0;
     let mut consecutive_success = 0; // 连续成功计数
     let mut consecutive_fail = 0; // 连续失败计数
 
+    let mut current_segment_idx = 0;
     let mut batch_idx = 0;
-    while batch_idx < total_batches {
-        let actual_concurrency = current_concurrency.min(total_batches - batch_idx);
+    
+    while current_segment_idx < total_segments_count {
+        let dynamic_batch_size = calculate_dynamic_batch_size(
+            &segments, 
+            current_segment_idx, 
+            context_size, 
+            model_config.max_context_tokens
+        );
+        
+        let actual_concurrency = current_concurrency.min(
+            ((total_segments_count - current_segment_idx + dynamic_batch_size - 1) / dynamic_batch_size)
+        );
+        
         let mut tasks = Vec::new();
         
-        for j in batch_idx..batch_idx + actual_concurrency {
-            let start_idx = j * batch_size;
-            let end_idx = std::cmp::min(start_idx + batch_size, total_segments_count);
-            let chunk: Vec<SubtitleSegment> = segments[start_idx..end_idx].to_vec();
+        for _ in 0..actual_concurrency {
+            if current_segment_idx >= total_segments_count {
+                break;
+            }
+            
+            let batch_start_idx = current_segment_idx;
+            let batch_size_for_this = calculate_dynamic_batch_size(
+                &segments, 
+                batch_start_idx, 
+                context_size, 
+                model_config.max_context_tokens
+            );
+            let batch_end_idx = std::cmp::min(batch_start_idx + batch_size_for_this, total_segments_count);
+            let chunk: Vec<SubtitleSegment> = segments[batch_start_idx..batch_end_idx].to_vec();
             
             let app_clone = app.clone();
             let client_clone = client.clone();
@@ -508,7 +615,9 @@ async fn translate_subtitle(
             let from_lang_clone = fromLang.to_string();
             let to_lang_clone = toLang.to_string();
             let system_prompt_clone = systemPrompt.to_string();
-            let enable_asr_correction_clone = enableAsrCorrection; // 新增参数
+            let enable_asr_correction_clone = enableAsrCorrection;
+            let current_batch_idx = batch_idx;
+            let max_context = model_config.max_context_tokens;
 
             let task = tokio::spawn(async move {
                 let result = translate_single_batch(
@@ -516,9 +625,9 @@ async fn translate_subtitle(
                     client_clone,
                     &segments_clone,
                     &chunk,
-                    j,
-                    batch_size,
-                    total_batches,
+                    current_batch_idx,
+                    batch_size_for_this,
+                    0,
                     total_segments_count,
                     &provider_clone,
                     &apikey_clone,
@@ -527,26 +636,28 @@ async fn translate_subtitle(
                     &to_lang_clone,
                     &system_prompt_clone,
                     context_size,
-                    enable_asr_correction_clone, // 传递参数
+                    enable_asr_correction_clone,
+                    max_context,
                 ).await;
-                (j, result)
+                (current_batch_idx, batch_start_idx, result)
             });
             
             tasks.push(task);
+            current_segment_idx = batch_end_idx;
+            batch_idx += 1;
         }
-
+        
         let mut results = Vec::new();
         let mut has_429_error = false;
         
         for task in tasks {
             match task.await {
-                Ok((batch_idx, Ok(batch_segments))) => {
+                Ok((current_batch_idx, batch_start_idx, Ok(batch_segments))) => {
                     let seg_count = batch_segments.len();
                     completed_segments_count += seg_count;
                     consecutive_success += 1;
                     consecutive_fail = 0;
                     
-                    // 如果连续成功，可以尝试增加并发数
                     if consecutive_success >= 3 && current_concurrency < initial_concurrency {
                         current_concurrency = (current_concurrency + 1).min(initial_concurrency);
                         println!("[INFO] 连续成功，当前并发数调整为: {}", current_concurrency);
@@ -554,32 +665,29 @@ async fn translate_subtitle(
                     }
                     
                     let progress = (completed_segments_count as f64 / total_segments_count as f64) * 100.0;
-                    results.push((batch_idx, batch_segments));
+                    results.push((current_batch_idx, batch_start_idx, batch_segments));
                     let _ = app.emit("translation-progress", serde_json::json!({
-                        "batchIndex": batch_idx + 1,
-                        "totalBatches": total_batches,
+                        "batchIndex": current_batch_idx + 1,
+                        "totalBatches": batch_idx,
                         "progress": progress,
                         "message": format!("已完成 {}/{} 条字幕", completed_segments_count, total_segments_count)
                     }));
                     println!("[INFO] 批次 {} 完成, 累计完成 {}/{} 条字幕, 进度: {:.1}%", 
-                             batch_idx + 1, completed_segments_count, total_segments_count, progress);
+                             current_batch_idx + 1, completed_segments_count, total_segments_count, progress);
                 }
-                Ok((_, Err(e))) => {
+                Ok((_, _, Err(e))) => {
                     println!("[ERROR] 批次处理失败: {}", e);
                     
-                    // 检查是否是 429 错误
                     if e.contains("429") || e.contains("Too Many Requests") {
                         has_429_error = true;
                         consecutive_fail += 1;
                         consecutive_success = 0;
                         
-                        // 减少并发数
                         if current_concurrency > 1 {
                             current_concurrency = (current_concurrency / 2).max(1);
                             println!("[WARN] 收到 429 错误，当前并发数调整为: {}", current_concurrency);
                         }
                         
-                        // 等待一段时间后继续下一个批次
                         let sleep_time = (consecutive_fail * 2).min(10);
                         println!("[WARN] 等待 {} 秒后继续...", sleep_time);
                         tokio::time::sleep(tokio::time::Duration::from_secs(sleep_time)).await;
@@ -594,20 +702,19 @@ async fn translate_subtitle(
             }
         }
         
-        batch_idx += actual_concurrency;
         all_results.extend(results);
     }
 
-    all_results.sort_by_key(|(idx, _)| *idx);
+    all_results.sort_by_key(|(_, start_idx, _)| *start_idx);
     
     let mut final_results = Vec::new();
-    for (_, segs) in all_results {
+    for (_, _, segs) in all_results {
         final_results.extend(segs);
     }
 
     let _ = app.emit("translation-progress", serde_json::json!({
-        "batchIndex": total_batches,
-        "totalBatches": total_batches,
+        "batchIndex": batch_idx,
+        "totalBatches": batch_idx,
         "progress": 100.0,
         "message": "翻译完成"
     }));

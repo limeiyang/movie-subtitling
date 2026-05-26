@@ -72,7 +72,7 @@ function TranslationView({ onNext, onBack }: TranslationViewProps) {
   const [progress, setProgress] = useState(0);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<"success" | "error" | null>(null);
-  const [enableAsrCorrection, setEnableAsrCorrection] = useState(false);
+  const [enableAsrCorrection, setEnableAsrCorrection] = useState(true);
   // const [isCorrecting, setIsCorrecting] = useState(false); // 不再需要，因为不再有单独的纠错流程
   // const [correctionProgress, setCorrectionProgress] = useState(0); // 不再需要
 
