@@ -72,7 +72,37 @@
       "Bash(/c/msys64/ucrt64/bin/gcc.exe -E -xc -)",
       "Bash(cmd //c \"windres test.rc test.o 2>&1\")",
       "Bash(MSYS2_ENV_CONV_EXCL= RC_MSYS2_TYPE=mingw64 windres --version)",
-      "Bash(rustup toolchain *)"
+      "Bash(rustup toolchain *)",
+      "WebSearch",
+      "Bash(nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv)",
+      "Bash(cargo search *)",
+      "Read(//c/Users/A/.cargo/registry/src/**)",
+      "Bash(nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv)",
+      "Bash(CXXFLAGS=\"-I/c/msys64/mingw64/include\" CFLAGS=\"-I/c/msys64/mingw64/include\" cargo build)",
+      "Bash(rm -rf /d/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-* 2>/dev/null; ls /d/codebase/github/movie-subtitling/src-tauri/target/debug/build/ | grep whisper)",
+      "Bash(ls /usr/bin/make* 2>/dev/null; which make 2>/dev/null; ls /c/msys64/usr/bin/make* 2>/dev/null)",
+      "Read(//usr/**)",
+      "Bash(cd /d D:\\\\codebase\\\\github\\\\movie-subtitling)",
+      "Bash(cmd /c scripts\\\\build-msvc.bat)",
+      "Bash(D:/codebase/github/movie-subtitling/scripts/build-msvc.bat *)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(where clang *)",
+      "Bash(clang *)",
+      "Bash(sed -n '467,473p' src/bindings.rs)",
+      "Bash(sed -n '481,488p' src/bindings.rs)",
+      "Bash(sed -n '545,548p' src/bindings.rs)",
+      "Bash(sed -i.bak 's/\\\\[\\\\\"Size of _G_fpos_t\\\\\"\\\\]\\\\[:\\\\:std::mem::size_of::<_G_fpos_t>\\(\\) - 16usize\\\\]/[\"Size of _G_fpos_t\"][::std::mem::size_of::<_G_fpos_t>\\(\\) - 12usize]/' src/bindings.rs)",
+      "Bash(sed -i 's/\\\\[\\\\\"Size of _G_fpos64_t\\\\\"\\\\]\\\\[:\\\\:std::mem::size_of::<_G_fpos64_t>\\(\\) - 16usize\\\\]/[\"Size of _G_fpos64_t\"][::std::mem::size_of::<_G_fpos64_t>\\(\\) - 12usize]/' src/bindings.rs)",
+      "Bash(sed -i 's/\\\\[\\\\\"Size of _IO_FILE\\\\\"\\\\]\\\\[:\\\\:std::mem::size_of::<_IO_FILE>\\(\\) - 216usize\\\\]/[\"Size of _IO_FILE\"][::std::mem::size_of::<_IO_FILE>\\(\\) - 208usize]/' src/bindings.rs)",
+      "Bash(cp src/bindings.rs src/bindings.rs.fixed)",
+      "Bash(sed -n '467,490p' src/bindings.rs)",
+      "Bash(sed -i 's/\\\\[\\\\\"Alignment of _G_fpos_t\\\\\"\\\\]\\\\[:\\\\:std::mem::align_of::<_G_fpos_t>\\(\\) - 8usize\\\\]/[\"Alignment of _G_fpos_t\"][::std::mem::align_of::<_G_fpos_t>\\(\\) - 4usize]/' src/bindings.rs)",
+      "Bash(sed -i 's/\\\\[\\\\\"Alignment of _G_fpos64_t\\\\\"\\\\]\\\\[:\\\\:std::mem::align_of::<_G_fpos64_t>\\(\\) - 8usize\\\\]/[\"Alignment of _G_fpos64_t\"][::std::mem::align_of::<_G_fpos64_t>\\(\\) - 4usize]/' src/bindings.rs)",
+      "Bash(python3 *)"
+    ],
+    "additionalDirectories": [
+      "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debug\\build"
     ]
   }
 }

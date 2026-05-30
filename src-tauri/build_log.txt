@@ -1,0 +1,305 @@
+﻿cargo :    Compiling whisper-rs-sys v0.15.0
+所在位置 行:1 字符: 106
++ ... Tools\VC\Auxiliary\Build\vcvarsall.bat' x64; cargo build 2>&1 | Out-F ...
++                                                  ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling whisper-rs-sys v0.15.0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling movie-subtitling v0.1.0 (D:\codebase\github\movie-subtitling\src-tauri)
+error: failed to run custom build command for `movie-subtitling v0.1.0 (D:\codebase\github\movie-subtitling\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: `D:\codebase\github\movie-subtitling\src-tauri\target\debug\build\movie-subtitling-
+6a6d2827053ca936\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rerun-if-env-changed=TAURI_CONFIG
+  cargo:rustc-check-cfg=cfg(desktop)
+  cargo:rustc-cfg=desktop
+  cargo:rustc-check-cfg=cfg(mobile)
+  cargo:rerun-if-changed=D:\codebase\github\movie-subtitling\src-tauri\tauri.conf.json
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_APP_NAME=app
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_PREFIX=com_subtitling
+  cargo:rustc-check-cfg=cfg(dev)
+  cargo:PERMISSION_FILES_PATH=D:\codebase\github\movie-subtitling\src-tauri\target\debug\build\movie-subtitling-c1fe89b
+067f7073f\out\app-manifest\__app__-permission-files
+  cargo:rerun-if-changed=capabilities
+  cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
+  cargo:rustc-env=TAURI_ENV_TARGET_TRIPLE=x86_64-pc-windows-gnu
+  package.metadata does not exist
+
+  --- stderr
+  windres: preprocessing failed.
+
+  thread 'main' (22252) panicked at C:\Users\A\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-winres-0.3.6\
+src\lib.rs:543:14:
+  called `Result::unwrap()` on an `Err` value: Failed("windres failed to compile \"D:\\codebase\\github\\movie-subtitli
+ng\\src-tauri\\target\\debug\\build\\movie-subtitling-c1fe89b067f7073f\\out\\resource.rc\" into \"D:\\codebase\\github\
+\movie-subtitling\\src-tauri\\target\\debug\\build\\movie-subtitling-c1fe89b067f7073f\\out\\libresource.a\" with exit c
+ode: 1")
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+warning: build failed, waiting for other jobs to finish...
+warning: whisper-rs-sys@0.15.0: Compiler family detection failed due to error: ToolExecError: command did not execute s
+uccessfully (status code exit code: 1): "gcc.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debu
+g\\build\\whisper-rs-sys-2769e07c8efb8c11\\out\\10685484512062622817detect_compiler_family.c"
+warning: whisper-rs-sys@0.15.0: Compiler family detection failed due to error: ToolExecError: command did not execute s
+uccessfully (status code exit code: 1): "g++.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debu
+g\\build\\whisper-rs-sys-2769e07c8efb8c11\\out\\3180714449502078883detect_compiler_family.c"
+warning: whisper-rs-sys@0.15.0: Compiler family detection failed due to error: ToolExecError: command did not execute s
+uccessfully (status code exit code: 1): "gcc.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debu
+g\\build\\whisper-rs-sys-2769e07c8efb8c11\\out\\4899509711691053434detect_compiler_family.c"
+error: failed to run custom build command for `whisper-rs-sys v0.15.0`
+
+Caused by:
+  process didn't exit successfully: `D:\codebase\github\movie-subtitling\src-tauri\target\debug\build\whisper-rs-sys-30
+3d1a756748a4d6\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rustc-link-lib=dylib=stdc++
+  cargo:rustc-link-lib=cublas
+  cargo:rustc-link-lib=cudart
+  cargo:rustc-link-lib=cublasLt
+  cargo:rustc-link-lib=cuda
+  cargo:rustc-link-search=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.2\lib/x64
+  cargo:rerun-if-changed=wrapper.h
+  cargo:rerun-if-env-changed=TARGET
+  cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS_x86_64-pc-windows-gnu
+  cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu
+  cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS
+  cargo:rerun-if-changed=wrapper.h
+  cargo:rerun-if-changed=./whisper.cpp\include/whisper.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\stdbool.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\stddef.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\vcruntime.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\sal.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\concurrencysal.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\vadefs.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\stdint.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\vcruntime.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\stdio.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt_wstdio.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt_stdio_config.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\corecrt.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml-cpu.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml-backend.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml-alloc.h
+  cargo:rerun-if-changed=./whisper.cpp/ggml/include\ggml.h
+  cargo:rerun-if-changed=C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt\stddef.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\stdint.h
+  cargo:rerun-if-changed=E:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\inclu
+de\stdbool.h
+  cargo:rerun-if-changed=./whisper.cpp\ggml/include/ggml.h
+  cargo:rustc-link-lib=advapi32
+  CMAKE_TOOLCHAIN_FILE_x86_64-pc-windows-gnu = None
+  CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_gnu = None
+  HOST_CMAKE_TOOLCHAIN_FILE = None
+  CMAKE_TOOLCHAIN_FILE = None
+  CMAKE_GENERATOR_x86_64-pc-windows-gnu = None
+  CMAKE_GENERATOR_x86_64_pc_windows_gnu = None
+  HOST_CMAKE_GENERATOR = None
+  CMAKE_GENERATOR = Some("MinGW Makefiles")
+  cargo:warning=Compiler family detection failed due to error: ToolExecError: command did not execute successfully (sta
+tus code exit code: 1): "gcc.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debug\\build\\whispe
+r-rs-sys-2769e07c8efb8c11\\out\\10685484512062622817detect_compiler_family.c"
+  cargo:warning=Compiler family detection failed due to error: ToolExecError: command did not execute successfully (sta
+tus code exit code: 1): "g++.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debug\\build\\whispe
+r-rs-sys-2769e07c8efb8c11\\out\\3180714449502078883detect_compiler_family.c"
+  cargo:warning=Compiler family detection failed due to error: ToolExecError: command did not execute successfully (sta
+tus code exit code: 1): "gcc.exe" "-E" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debug\\build\\whispe
+r-rs-sys-2769e07c8efb8c11\\out\\4899509711691053434detect_compiler_family.c"
+  CMAKE_PREFIX_PATH_x86_64-pc-windows-gnu = None
+  CMAKE_PREFIX_PATH_x86_64_pc_windows_gnu = None
+  HOST_CMAKE_PREFIX_PATH = None
+  CMAKE_PREFIX_PATH = None
+  CMAKE_x86_64-pc-windows-gnu = None
+  CMAKE_x86_64_pc_windows_gnu = None
+  HOST_CMAKE = None
+  CMAKE = None
+  Running with debug output on.
+  -- The C compiler identification is unknown
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake
+  -- The CXX compiler identification is unknown
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake
+  -- Detecting C compiler ABI info
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake
+  -- Detecting C compiler ABI info - failed
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake
+  -- Check for working C compiler: C:/msys64/mingw64/bin/gcc.exe
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCompilerCommon.cmake
+  -- Check for working C compiler: C:/msys64/mingw64/bin/gcc.exe - broken
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCompilerCommon.cmake
+  -- Configuring incomplete, errors occurred!
+
+  --- stderr
+  running: "cmake" "-Wdev" "--debug-output" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debug\\build\\w
+hisper-rs-sys-2769e07c8efb8c11\\out\\whisper.cpp" "-B" "D:\\codebase\\github\\movie-subtitling\\src-tauri\\target\\debu
+g\\build\\whisper-rs-sys-2769e07c8efb8c11\\out\\build" "-G" "MinGW Makefiles" "-DBUILD_SHARED_LIBS=OFF" "-DWHISPER_ALL_
+WARNINGS=OFF" "-DWHISPER_ALL_WARNINGS_3RD_PARTY=OFF" "-DWHISPER_BUILD_TESTS=OFF" "-DWHISPER_BUILD_EXAMPLES=OFF" "-DGGML
+_CUDA=ON" "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" "-DCMAKE_CUDA_FLAGS=-Xcompiler=-fPIC" "-DGGML_METAL=OFF" "-DCMAKE_BUIL
+D_TYPE=RelWithDebInfo" "-DCMAKE_GENERATOR=MinGW Makefiles" "-DGGML_OPENMP=OFF" "-DCMAKE_INSTALL_PREFIX=D:\\codebase\\gi
+thub\\movie-subtitling\\src-tauri\\target\\debug\\build\\whisper-rs-sys-2769e07c8efb8c11\\out" "-DCMAKE_C_FLAGS= -ffunc
+tion-sections -fdata-sections -fPIC -m64 -w" "-DCMAKE_CXX_FLAGS= /utf-8 -DWHISPER_DEBUG -ffunction-sections -fdata-sect
+ions -fPIC -m64 -w" "-DCMAKE_ASM_FLAGS= -ffunction-sections -fdata-sections -fPIC -m64 -w" "-DCMAKE_VERBOSE_MAKEFILE:BO
+OL=ON"
+  CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):
+    Compatibility with CMake < 3.10 will be removed from a future version of
+    CMake.
+
+    Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+    to tell CMake that the project requires at least <min> but has been updated
+    to work with policies introduced by <max> or earlier.
+
+
+     Called from: [1]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+  CMake Warning (dev) at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake:128 (set):
+    Policy CMP0126 is not set: set(CACHE) does not remove a normal variable of
+    the same name.  Run "cmake --help-policy CMP0126" for policy details.  Use
+    the cmake_policy command to set the policy and suppress this warning.
+
+    For compatibility with older versions of CMake, normal variable
+    "CMAKE_C_COMPILER" will be removed from the current scope.
+  Call Stack (most recent call first):
+    C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:67 (_cmake_find_compiler_path)
+    CMakeLists.txt:2 (project)
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake
+  CMake Warning (dev) at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake:128 (set):
+    Policy CMP0126 is not set: set(CACHE) does not remove a normal variable of
+    the same name.  Run "cmake --help-policy CMP0126" for policy details.  Use
+    the cmake_policy command to set the policy and suppress this warning.
+
+    For compatibility with older versions of CMake, normal variable
+    "CMAKE_CXX_COMPILER" will be removed from the current scope.
+  Call Stack (most recent call first):
+    C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:71 (_cmake_find_compiler_path)
+    CMakeLists.txt:2 (project)
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake
+  CMake Warning (dev) at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program):
+    Policy CMP0126 is not set: set(CACHE) does not remove a normal variable of
+    the same name.  Run "cmake --help-policy CMP0126" for policy details.  Use
+    the cmake_policy command to set the policy and suppress this warning.
+
+    For compatibility with older versions of CMake, normal variable
+    "CMAKE_TAPI" will be removed from the current scope.
+  Call Stack (most recent call first):
+    C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)
+    CMakeLists.txt:2 (project)
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake
+  CMake Warning (dev) at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile
+):
+    Policy CMP0066 is not set: Honor per-config flags in try_compile()
+    source-file signature.  Run "cmake --help-policy CMP0066" for policy
+    details.  Use the cmake_policy command to set the policy and suppress this
+    warning.
+
+    For compatibility with older versions of CMake, try_compile is not honoring
+    caller config-specific compiler flags (e.g.  CMAKE_C_FLAGS_DEBUG) in the
+    test project.
+  Call Stack (most recent call first):
+    C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)
+    CMakeLists.txt:2 (project)
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+     Called from: [3]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [2]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake
+  CMake Warning (dev) at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:56 (try_compile):
+    Policy CMP0066 is not set: Honor per-config flags in try_compile()
+    source-file signature.  Run "cmake --help-policy CMP0066" for policy
+    details.  Use the cmake_policy command to set the policy and suppress this
+    warning.
+
+    For compatibility with older versions of CMake, try_compile is not honoring
+    caller config-specific compiler flags (e.g.  CMAKE_C_FLAGS_DEBUG) in the
+    test project.
+  Call Stack (most recent call first):
+    CMakeLists.txt:2 (project)
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+     Called from: [2]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+  CMake Error at C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:67 (message):
+    The C compiler
+
+      "C:/msys64/mingw64/bin/gcc.exe"
+
+    is not able to compile a simple test program.
+
+    It fails with the following output:
+
+      Change Dir: 'D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/out
+/build/CMakeFiles/CMakeScratch/TryCompile-nz7fsk'
+      
+      Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:\msys64\mingw64\bin\ninja.exe -f 
+Makefile cmTC_6d476/fast
+      ninja: error: Makefile:5: expected '=', got ':'
+      default_target: all
+                    ^ near here
+      
+      
+
+
+
+    CMake will not be able to correctly generate this project.
+  Call Stack (most recent call first):
+    CMakeLists.txt:2 (project)
+
+
+     Called from: [2]	D:/codebase/github/movie-subtitling/src-tauri/target/debug/build/whisper-rs-sys-2769e07c8efb8c11/
+out/whisper.cpp/CMakeLists.txt
+                  [1]	C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake
+
+  thread 'main' (10960) panicked at C:\Users\A\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cmake-0.1.58\src\li
+b.rs:1132:5:
+
+  command did not execute successfully, got: exit code: 1
+
+  build script failed, must exit now
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

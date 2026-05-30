@@ -47,7 +47,7 @@ function FileSelect({ onNext }: FileSelectProps) {
 
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      const folderPath = await invoke<string>("select_save_folder");
+      const folderPath = await invoke<string>("select_folder");
       if (folderPath) {
         setSubtitleSavePath(folderPath);
         localStorage.setItem("subtitle_save_path", folderPath);

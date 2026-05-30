@@ -13,8 +13,30 @@ interface AsrSettingsProps {
 
 type AsrMode = "local" | "cloud";
 
+const WHISPER_LANGUAGES = [
+  { code: "", name: "自动检测（推荐）" },
+  { code: "ja", name: "日语" },
+  { code: "en", name: "英语" },
+  { code: "zh", name: "中文" },
+  { code: "ko", name: "韩语" },
+  { code: "fr", name: "法语" },
+  { code: "de", name: "德语" },
+  { code: "es", name: "西班牙语" },
+  { code: "ru", name: "俄语" },
+  { code: "pt", name: "葡萄牙语" },
+  { code: "it", name: "意大利语" },
+  { code: "nl", name: "荷兰语" },
+  { code: "pl", name: "波兰语" },
+  { code: "tr", name: "土耳其语" },
+  { code: "ar", name: "阿拉伯语" },
+  { code: "hi", name: "印地语" },
+  { code: "th", name: "泰语" },
+  { code: "vi", name: "越南语" },
+  { code: "id", name: "印尼语" },
+];
+
 function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
-  const { originalSegments, audioPath, whisperModelsPath, detectedLanguage, videoPath, setWhisperModelsPath, setOriginalSegments, setDetectedLanguage } = useAppStore();
+  const { originalSegments, audioPath, whisperModelsPath, asrLanguage, detectedLanguage, videoPath, setWhisperModelsPath, setAsrLanguage, setOriginalSegments, setDetectedLanguage } = useAppStore();
   
   const loadSettings = () => {
     const savedMode = localStorage.getItem("asr_mode") as AsrMode || "local";
@@ -311,7 +333,8 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
         model: selectedModelFile,
         modelsPath: mode === "local" ? whisperModelsPath : null,
         useCloud: mode === "cloud",
-        apiKey: mode === "cloud" ? apiKey : null
+        apiKey: mode === "cloud" ? apiKey : null,
+        language: asrLanguage || null
       });
 
       // 基于时间的进度条，前15%是初始化阶段，后85%是转写阶段
@@ -394,8 +417,54 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds % 1) * 1000);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+  };
+
+  const generateSrtContent = (segments: Array<{index: number; start: number; end: number; originalText: string; translatedText: string | null}>, exportMode: string) => {
+    let content = "";
+
+    segments.forEach((seg, index) => {
+      content += `${index + 1}\n`;
+      content += `${formatTime(seg.start)} --> ${formatTime(seg.end)}\n`;
+      content += seg.originalText;
+      content += "\n\n";
+    });
+
+    return content;
+  };
+
   const handleSaveOriginalSrt = async () => {
-    if (originalSegments.length === 0 || !isTauriAvailable) {
+    if (originalSegments.length === 0) {
+      return;
+    }
+
+    const segmentsToExport = originalSegments.map(s => ({
+      index: s.index,
+      start: s.start,
+      end: s.end,
+      originalText: s.originalText,
+      translatedText: s.translatedText || null
+    }));
+
+    if (!isTauriAvailable) {
+      const content = generateSrtContent(segmentsToExport, "original");
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const defaultName = videoPath 
+        ? videoPath.replace(/\.[^/.]+$/, "") + "_original.srt"
+        : `subtitle_${Date.now()}.srt`;
+      link.download = defaultName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      message.success("原始字幕已下载！");
       return;
     }
 
@@ -418,14 +487,6 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
       if (!savePath) {
         return;
       }
-
-      const segmentsToExport = originalSegments.map(s => ({
-        index: s.index,
-        start: s.start,
-        end: s.end,
-        originalText: s.originalText,
-        translatedText: s.translatedText || null
-      }));
 
       await invoke("export_srt", {
         segments: segmentsToExport,
@@ -487,12 +548,33 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
           />
         )}
 
-        <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)} style={{ marginBottom: 24, display: "block" }}>
+        <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)} style={{ marginBottom: 16, display: "block" }}>
           <Space direction="vertical">
             <Radio value="local">本地模式 (使用 Whisper)</Radio>
             <Radio value="cloud">云服务模式 (OpenAI Whisper API)</Radio>
           </Space>
         </Radio.Group>
+
+        <div style={{ marginBottom: 24 }}>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Text strong>ASR 识别语言：</Text>
+            <Select
+              value={asrLanguage || ""}
+              onChange={(value) => setAsrLanguage(value || null)}
+              style={{ width: "100%" }}
+              placeholder="选择识别语言（默认自动检测"
+            >
+              {WHISPER_LANGUAGES.map(lang => (
+                <Option value={lang.code} key={lang.code || "auto"}>
+                  {lang.name}
+                </Option>
+              ))}
+            </Select>
+            <Text type="secondary">
+              如果知道视频语言，建议明确指定，可获得更准确的识别结果
+            </Text>
+          </Space>
+        </div>
 
         {mode === "local" && (
           <Card type="inner" style={{ marginBottom: 24 }}>
@@ -666,7 +748,6 @@ function AsrSettings({ onNext, onBack }: AsrSettingsProps) {
             <Button
               onClick={handleSaveOriginalSrt}
               icon={<SaveOutlined />}
-              disabled={!isTauriAvailable}
             >
               保存原始字幕
             </Button>

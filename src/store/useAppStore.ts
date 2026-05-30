@@ -25,6 +25,9 @@ interface AppState {
   // Whisper 模型配置
   whisperModelsPath: string | null;
   
+  // ASR 配置
+  asrLanguage: string | null;  // 用户选择的 ASR 语言
+  
   // ASR 结果
   originalSegments: SubtitleSegment[];
   detectedLanguage: string | null;
@@ -41,6 +44,7 @@ interface AppState {
   setVideoFile: (file: File | null, path: string | null) => void;
   setAudioPath: (path: string | null) => void;
   setWhisperModelsPath: (path: string | null) => void;
+  setAsrLanguage: (lang: string | null) => void;
   setOriginalSegments: (segments: SubtitleSegment[]) => void;
   setDetectedLanguage: (lang: string | null) => void;
   addTranslation: (result: TranslationResult) => void;
@@ -56,6 +60,7 @@ export const useAppStore = create<AppState>((set) => ({
   videoPath: null,
   audioPath: null,
   whisperModelsPath: null,
+  asrLanguage: null,
   originalSegments: [],
   detectedLanguage: null,
   translationHistory: [],
@@ -66,6 +71,7 @@ export const useAppStore = create<AppState>((set) => ({
   setVideoFile: (file, path) => set({ videoFile: file, videoPath: path }),
   setAudioPath: (path) => set({ audioPath: path }),
   setWhisperModelsPath: (path) => set({ whisperModelsPath: path }),
+  setAsrLanguage: (lang) => set({ asrLanguage: lang }),
   setOriginalSegments: (segments) => set({ originalSegments: segments }),
   setDetectedLanguage: (lang) => set({ detectedLanguage: lang }),
   addTranslation: (result) => set((state) => ({ 
@@ -86,7 +92,9 @@ export const useAppStore = create<AppState>((set) => ({
     videoPath: null,
     audioPath: null,
     whisperModelsPath: null,
+    asrLanguage: null,
     originalSegments: [],
+    detectedLanguage: null,
     translationHistory: [],
     currentStep: 0,
     currentLeftHistoryIndex: -1,

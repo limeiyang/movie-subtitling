@@ -62,15 +62,14 @@ function ExportDialog({ onBack }: ExportDialogProps) {
 
   const downloadSrt = async () => {
     const segments = getSelectedSegments();
-    generateSrtContent(segments, mode);
+    const content = generateSrtContent(segments, mode);
+    const defaultFileName = `subtitle_${Date.now()}.srt`;
 
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       
-      const defaultPath = `subtitle_${Date.now()}.srt`;
-      
       const savePath = await invoke<string>("select_save_path", {
-        defaultPath: defaultPath,
+        defaultPath: defaultFileName.replace(".srt", "_export.srt"),
         filterName: "SRT Files",
         filterExt: "srt"
       });
@@ -93,9 +92,18 @@ function ExportDialog({ onBack }: ExportDialogProps) {
 
       setExported(true);
       message.success(`字幕已导出到：${savePath}`);
-    } catch (error) {
-      console.error("Export failed:", error);
-      message.error("导出失败：" + (error as any).message);
+    } catch {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = defaultFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExported(true);
+      message.success("字幕已下载！");
     }
   };
 

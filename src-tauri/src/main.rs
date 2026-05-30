@@ -8,6 +8,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use tauri::Emitter;
 
+fn sanitize_utf8_string(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() && c != '\n' && c != '\t' { ' ' } else { c })
+        .collect::<String>()
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .collect()
+}
+
 mod subtitle;
 use subtitle::cleaners::CleanupProcessor;
 use subtitle::content::ContentProcessor;
@@ -1337,7 +1346,7 @@ async fn transcribe_audio(
     
     println!("Loading model from: {}", model_path);
     
-    let model = whisper_rs::WhisperContext::new(&model_path)
+    let model = whisper_rs::WhisperContext::new_with_params(&model_path, whisper_rs::WhisperContextParameters::default())
         .map_err(|e| format!("Failed to load model: {} - {}", model_path, e))?;
 
     let mut state = model.create_state().map_err(|e| format!("Failed to create state: {}", e))?;
@@ -1362,17 +1371,18 @@ async fn transcribe_audio(
         .map_err(|e| format!("Failed to transcribe: {}", e))?;
     println!("转写完成！");
 
-    let num_segments = state.full_n_segments().map_err(|e| format!("Failed to get segments: {}", e))?;
+    let num_segments = state.full_n_segments();
     let mut segments: Vec<SubtitleSegment> = Vec::new();
 
     for i in 0..num_segments {
-        let start = state.full_get_segment_t0(i).map_err(|e| format!("Failed to get segment start: {}", e))? as f64 / 100.0;
-        let mut end = state.full_get_segment_t1(i).map_err(|e| format!("Failed to get segment end: {}", e))? as f64 / 100.0;
-        let text = state
-            .full_get_segment_text(i)
-            .map_err(|e| format!("Failed to get segment text: {}", e))?
-            .trim()
-            .to_string();
+        let segment = match state.get_segment(i) {
+            Some(seg) => seg,
+            None => continue,
+        };
+        let start = segment.start_timestamp() as f64 / 100.0;
+        let mut end = segment.end_timestamp() as f64 / 100.0;
+        let text = segment.to_str().map_err(|e| format!("Failed to get segment text: {}", e))?.trim().to_string();
+        let text = sanitize_utf8_string(&text);
 
         if !text.is_empty() {
             let duration = end - start;

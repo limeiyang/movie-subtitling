@@ -1,0 +1,40 @@
+﻿cargo :    Compiling whisper-rs-sys v0.15.0
+所在位置 行:1 字符: 300
++ ... 4; :CMAKE_GENERATOR='Visual Studio 17 2022'; cargo build 2>&1 | Out-F ...
++                                                  ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling whisper-rs-sys v0.15.0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling movie-subtitling v0.1.0 (D:\codebase\github\movie-subtitling\src-tauri)
+error: failed to run custom build command for `movie-subtitling v0.1.0 (D:\codebase\github\movie-subtitling\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: `D:\codebase\github\movie-subtitling\src-tauri\target\debug\build\movie-subtitling-
+6a6d2827053ca936\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rerun-if-env-changed=TAURI_CONFIG
+  cargo:rustc-check-cfg=cfg(desktop)
+  cargo:rustc-cfg=desktop
+  cargo:rustc-check-cfg=cfg(mobile)
+  cargo:rerun-if-changed=D:\codebase\github\movie-subtitling\src-tauri\tauri.conf.json
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_APP_NAME=app
+  cargo:rustc-env=TAURI_ANDROID_PACKAGE_NAME_PREFIX=com_subtitling
+  cargo:rustc-check-cfg=cfg(dev)
+  cargo:PERMISSION_FILES_PATH=D:\codebase\github\movie-subtitling\src-tauri\target\debug\build\movie-subtitling-c1fe89b
+067f7073f\out\app-manifest\__app__-permission-files
+  cargo:rerun-if-changed=capabilities
+  cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
+  cargo:rustc-env=TAURI_ENV_TARGET_TRIPLE=x86_64-pc-windows-gnu
+  package.metadata does not exist
+
+  --- stderr
+  windres: preprocessing failed.
+
+  thread 'main' (6856) panicked at C:\Users\A\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-winres-0.3.6\s
+rc\lib.rs:543:14:
+  called `Result::unwrap()` on an `Err` value: Failed("windres failed to compile \"D:\\codebase\\github\\movie-subtitli
+ng\\src-tauri\\target\\debug\\build\\movie-subtitling-c1fe89b067f7073f\\out\\resource.rc\" into \"D:\\codebase\\github\
+\movie-subtitling\\src-tauri\\target\\debug\\build\\movie-subtitling-c1fe89b067f7073f\\out\\libresource.a\" with exit c
+ode: 1")
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+warning: build failed, waiting for other jobs to finish...
